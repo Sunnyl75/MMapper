@@ -48,6 +48,8 @@ class QWheelEvent;
 class QWidget;
 class RoomSelFakeGL;
 
+struct ExportImageOptions;
+
 class NODISCARD_QOBJECT MapCanvas final : public QOpenGLWidget,
                                           private MapCanvasViewport,
                                           private MapCanvasInputState
@@ -116,6 +118,10 @@ public:
                        Mmapper2Group &groupManager,
                        QWidget *parent);
     ~MapCanvas() final;
+
+    QImage exportToImage(int width, int height, float zoom);
+    QImage exportToImageWithinBounds(glm::vec2 worldMin, glm::vec2 worldMax, int imageWidth, int imageHeight);
+    QImage exportToImage(const ExportImageOptions &options);
 
 public:
     NODISCARD static MapCanvas *getPrimary();

@@ -38,6 +38,7 @@
 #include "metatypes.h"
 #include "roomeditattrdlg.h"
 #include "utils.h"
+#include "../mainwindow/exportmapimagedialog.h"
 
 #include <memory>
 #include <mutex>
@@ -55,6 +56,9 @@
 #include <QString>
 #include <QTextBrowser>
 #include <QtWidgets>
+#include <QPainter>
+#include <QImage>
+#include <QMessageBox>
 
 NODISCARD static const char *get_type_name(const AsyncTypeEnum mode)
 {
@@ -1083,6 +1087,9 @@ void MainWindow::setupMenuBar()
     exportMenu->addAction(exportMm2xmlMapAct);
     exportMenu->addAction(exportWebMapAct);
     exportMenu->addAction(exportMmpMapAct);
+    QAction *exportMapImageAct = new QAction(tr("Export Map Image..."), this);
+    connect(exportMapImageAct, &QAction::triggered, this, &MainWindow::slot_exportMapImage);
+    exportMenu->addAction(exportMapImageAct);
     fileMenu->addAction(mergeAct);
     fileMenu->addSeparator();
     fileMenu->addAction(exitAct);
@@ -1958,6 +1965,50 @@ void MainWindow::slot_openSettingUpMmapper()
 void MainWindow::slot_openNewbieHelp()
 {
     QDesktopServices::openUrl(QUrl("https://mume.org/newbie.php"));
+}
+
+void MainWindow::slot_exportMapImage()
+{
+    ExportMapImageDialog dialog(this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;  // User cancelled
+    }
+
+    const QString fileName = QFileDialog::getSaveFileName(
+        this,
+        tr("Export Map Image"),
+        QDir::homePath() + "/map-export.png",
+        tr("PNG Images (*.png)"));
+
+    if (fileName.isEmpty()) {
+        qDebug() << "Export cancelled: no file name selected.";
+        return;
+    }
+
+    if (!m_mapWindow || !m_mapWindow->getCanvas()) {
+        QMessageBox::warning(this, tr("Export Failed"), tr("Map canvas is not available."));
+        return;
+    }
+
+    const ExportImageOptions options = dialog.getOptions();
+    QImage image = m_mapWindow->getCanvas()->exportToImage(options);
+
+    if (image.isNull()) {
+        qDebug() << "Generated image is null.";
+        QMessageBox::warning(this, tr("Export Failed"), tr("The exported image is empty or failed to generate."));
+        return;
+    }
+
+    qDebug() << "Attempting to save image to:" << fileName;
+    qDebug() << "Supported image formats:" << QImageWriter::supportedImageFormats();
+
+    if (!image.save(fileName)) {
+        qDebug() << "Image save failed.";
+        QMessageBox::warning(this, tr("Export Failed"), tr("Failed to save image to %1.").arg(fileName));
+    } else {
+        qDebug() << "Image saved successfully.";
+        QMessageBox::information(this, tr("Export Complete"), tr("Map image exported to %1.").arg(fileName));
+    }
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *event)

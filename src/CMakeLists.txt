@@ -629,6 +629,7 @@ add_executable(mmapper WIN32 MACOSX_BUNDLE
     ${mmapper_UIS}
     ${mmapper_RCS}
     ${mmapper_DATA}
+    mainwindow/exportmapimagedialog.h mainwindow/exportmapimagedialog.cpp mainwindow/exportmapimagedialog.ui
 )
 
 set(mm_libs mm_map mm_global)

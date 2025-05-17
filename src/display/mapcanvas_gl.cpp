@@ -24,6 +24,8 @@
 #include "Textures.h"
 #include "connectionselection.h"
 #include "mapcanvas.h"
+#include "../mainwindow/exportmapimagedialog.h"
+
 
 #include <algorithm>
 #include <array>
@@ -1083,3 +1085,92 @@ void MapCanvas::renderMapBatches()
         drawLayer(thisLayer, m_currentLayer);
     }
 }
+
+QImage MapCanvas::exportToImage(const ExportImageOptions &options)
+{
+    makeCurrent();  // Ensure OpenGL context is active
+
+    // Convert zoom percentage to scale factor
+    const float zoom = std::max(1.0f, static_cast<float>(options.zoomLevel) / 100.0f);
+
+    // Get tile size in pixels
+    const float tileSize = getTotalScaleFactor();  // Pixels per room tile
+
+    // Convert room coordinates to world units
+    const glm::vec2 worldMin = {
+        static_cast<float>(options.west) * tileSize,
+        static_cast<float>(options.south) * tileSize
+    };
+    const glm::vec2 worldMax = {
+        static_cast<float>(options.east + 1) * tileSize,
+        static_cast<float>(options.north + 1) * tileSize
+    };
+
+    const glm::vec2 worldSize = worldMax - worldMin;
+    const glm::vec2 center = (worldMin + worldMax) * 0.5f;
+
+    const int pixelWidth = static_cast<int>(worldSize.x * zoom);
+    const int pixelHeight = static_cast<int>(worldSize.y * zoom);
+
+    QOpenGLFramebufferObjectFormat format;
+    format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
+    format.setTextureTarget(GL_TEXTURE_2D);
+    format.setInternalTextureFormat(GL_RGBA);
+
+    QOpenGLFramebufferObject fbo(pixelWidth, pixelHeight, format);
+    if (!fbo.isValid()) {
+        qWarning() << "FBO not valid, cannot export image.";
+        return QImage();
+    }
+
+    fbo.bind();
+
+    QOpenGLFunctions *f = QOpenGLContext::currentContext()->functions();
+    f->glViewport(0, 0, pixelWidth, pixelHeight);
+
+    // Set the view matrix using proper world-space center
+    const glm::mat4 viewProj = getViewProj(center, glm::ivec2(pixelWidth, pixelHeight), zoom, m_currentLayer);
+    setMvp(viewProj);
+
+    // Clear to background color
+    getOpenGL().clear(Color{getConfig().canvas.backgroundColor});
+
+    // Draw background image
+    if (options.includeBackground &&
+        m_textures.backgroundImage &&
+        m_textures.backgroundImage->getId() != INVALID_MM_TEXTURE_ID)
+    {
+        const auto &tex = m_textures.backgroundImage;
+
+        const glm::vec3 topLeft{-6.f, 21.f, 0.f};
+        const glm::vec3 topRight{721.f, 21.f, 0.f};
+        const glm::vec3 bottomRight{721.f, -271.f, 0.f};
+        const glm::vec3 bottomLeft{-6.f, -271.f, 0.f};
+
+        const std::vector<TexVert> quadVerts = {
+                                                TexVert{glm::vec3(0.f, 1.f, 0.f), topLeft},
+                                                TexVert{glm::vec3(1.f, 1.f, 0.f), topRight},
+                                                TexVert{glm::vec3(1.f, 0.f, 0.f), bottomRight},
+                                                TexVert{glm::vec3(0.f, 0.f, 0.f), bottomLeft},
+                                                };
+
+        getOpenGL().renderTexturedQuads(
+            quadVerts,
+            GLRenderState()
+                .withBlend(BlendModeEnum::NONE)
+                .withTexture0(tex->getId())
+                .withColor(Color{1.f, 1.f, 1.f, 1.f})
+            );
+    }
+
+    // Draw map layers
+    paintMap();  // includes terrain, walls, exits
+    if (options.includeMarkers) paintBatchedInfomarks();
+    if (options.includeNotes) paintSelections();
+    if (options.includeConnections) paintDifferences();
+    if (options.includeLabels) paintCharacters();
+
+    fbo.release();
+    return fbo.toImage().mirrored();
+}
+

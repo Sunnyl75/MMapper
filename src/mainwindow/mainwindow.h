@@ -373,6 +373,13 @@ private:
     void onSuccessfulMerge(const Map &map, const InfomarkDb &infomarks);
     void onSuccessfulSave(SaveModeEnum mode, SaveFormatEnum format, const QString &fileName);
 
+private:
+    void connectCreateRoomConnection();
+    void disconnectCreateRoomConnection();
+    void connectScheduleActionConnection();
+    void disconnectScheduleActionConnection();
+    void addExportMapActionToFileMenu();
+
 public slots:
     void slot_newFile();
     void slot_open();
@@ -441,4 +448,7 @@ public slots:
     void slot_openMumeWiki();
     void slot_openSettingUpMmapper();
     void slot_openNewbieHelp();
+
+    void slot_exportMapImage();
+
 };
