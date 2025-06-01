@@ -1109,3 +1109,44 @@ void MapCanvas::userPressedEscape(bool /*pressed*/)
         break;
     }
 }
+
+std::optional<QRect> MapCanvas::getSelectedRoomBounds() const {
+    if (!m_roomSelection || m_roomSelection->empty())
+        return std::nullopt;
+
+    int minX = INT_MAX, minY = INT_MAX;
+    int maxX = INT_MIN, maxY = INT_MIN;
+
+    for (RoomId id : *m_roomSelection) {
+        const Coordinate& coord = m_data.getRoomHandle(id).getPosition();
+        minX = std::min(minX, coord.x);
+        minY = std::min(minY, coord.y);
+        maxX = std::max(maxX, coord.x);
+        maxY = std::max(maxY, coord.y);
+    }
+
+    return QRect(QPoint(minX, minY), QSize(maxX - minX + 1, maxY - minY + 1));
+}
+
+std::optional<QRect> MapCanvas::getVisibleRoomBounds() const
+{
+    if (m_viewportZoom <= 0.0f || m_viewportSize.x <= 0 || m_viewportSize.y <= 0)
+        return std::nullopt;
+
+    float worldWidth = static_cast<float>(m_viewportSize.x) / m_viewportZoom;
+    float worldHeight = static_cast<float>(m_viewportSize.y) / m_viewportZoom;
+
+    float left = m_viewportCenter.x - worldWidth * 0.5f;
+    float right = m_viewportCenter.x + worldWidth * 0.5f;
+    float bottom = m_viewportCenter.y - worldHeight * 0.5f;
+    float top = m_viewportCenter.y + worldHeight * 0.5f;
+
+    QRect bounds;
+    bounds.setLeft(static_cast<int>(std::floor(left)));
+    bounds.setRight(static_cast<int>(std::ceil(right)));
+    bounds.setTop(static_cast<int>(std::floor(bottom)));
+    bounds.setBottom(static_cast<int>(std::ceil(top)));
+
+    return bounds;
+}
+

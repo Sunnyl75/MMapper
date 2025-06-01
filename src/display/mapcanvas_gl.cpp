@@ -1086,31 +1086,44 @@ void MapCanvas::renderMapBatches()
     }
 }
 
+void MapCanvas::renderExportLayers(const ExportImageOptions &options)
+{
+    // Always draw the map base
+    paintMap();
+
+    // Optional overlays based on ExportImageOptions checkboxes
+    if (options.includeMarkers)
+        paintBatchedInfomarks();
+
+    if (options.includeSelectionIndicators)
+        paintSelections();
+
+    if (options.includeCharacters)
+        paintCharacters();
+}
+
 QImage MapCanvas::exportToImage(const ExportImageOptions &options)
 {
     makeCurrent();  // Ensure OpenGL context is active
 
-    // Convert zoom percentage to scale factor
-    const float zoom = std::max(1.0f, static_cast<float>(options.zoomLevel) / 100.0f);
+    const float tileSize = static_cast<float>(options.tileSize);  // px per room
 
-    // Get tile size in pixels
-    const float tileSize = getTotalScaleFactor();  // Pixels per room tile
+    const int numRoomsX = options.east - options.west + 1;
+    const int numRoomsY = options.north - options.south + 1;
 
-    // Convert room coordinates to world units
-    const glm::vec2 worldMin = {
-        static_cast<float>(options.west) * tileSize,
-        static_cast<float>(options.south) * tileSize
-    };
-    const glm::vec2 worldMax = {
-        static_cast<float>(options.east + 1) * tileSize,
-        static_cast<float>(options.north + 1) * tileSize
-    };
+    const int pixelWidth  = static_cast<int>(numRoomsX * tileSize);
+    const int pixelHeight = static_cast<int>(numRoomsY * tileSize);
 
-    const glm::vec2 worldSize = worldMax - worldMin;
-    const glm::vec2 center = (worldMin + worldMax) * 0.5f;
+    // 🧪 Logging for debugging
+    qDebug() << "[Export] Tile size (px/room):" << tileSize;
+    qDebug() << "[Export] Room bounds: W:" << options.west << "E:" << options.east
+             << "S:" << options.south << "N:" << options.north;
+    qDebug() << "[Export] Output image dimensions:" << pixelWidth << "x" << pixelHeight;
 
-    const int pixelWidth = static_cast<int>(worldSize.x * zoom);
-    const int pixelHeight = static_cast<int>(worldSize.y * zoom);
+    if (pixelWidth <= 0 || pixelHeight <= 0) {
+        qWarning() << "[Export] Invalid image dimensions. Aborting.";
+        return QImage();
+    }
 
     QOpenGLFramebufferObjectFormat format;
     format.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
@@ -1119,39 +1132,45 @@ QImage MapCanvas::exportToImage(const ExportImageOptions &options)
 
     QOpenGLFramebufferObject fbo(pixelWidth, pixelHeight, format);
     if (!fbo.isValid()) {
-        qWarning() << "FBO not valid, cannot export image.";
+        qWarning() << "[Export] Framebuffer is not valid.";
         return QImage();
     }
 
     fbo.bind();
-
     QOpenGLFunctions *f = QOpenGLContext::currentContext()->functions();
     f->glViewport(0, 0, pixelWidth, pixelHeight);
 
-    // Set the view matrix using proper world-space center
-    const glm::mat4 viewProj = getViewProj(center, glm::ivec2(pixelWidth, pixelHeight), zoom, m_currentLayer);
+    // 🌍 Correct center of export area in room coordinates
+    const glm::vec2 center = {
+        (options.west + options.east + 1) * 0.5f,
+        (options.north + options.south + 1) * 0.5f
+    };
+
+    // 🎯 Adjust zoom scale to match requested tile size
+    const float zoom = tileSize / 44.0f;
+
+    // Store for later access
+    m_viewportCenter = center;
+    m_viewportSize = glm::ivec2(pixelWidth, pixelHeight);
+    m_viewportZoom = zoom;
+
+    const glm::mat4 viewProj = getViewProj(center, m_viewportSize, zoom, m_currentLayer);
     setMvp(viewProj);
 
-    // Clear to background color
+    // 🖌 Clear background
     getOpenGL().clear(Color{getConfig().canvas.backgroundColor});
 
-    // Draw background image
+    // 🖼 Optional background image
     if (options.includeBackground &&
         m_textures.backgroundImage &&
         m_textures.backgroundImage->getId() != INVALID_MM_TEXTURE_ID)
     {
         const auto &tex = m_textures.backgroundImage;
-
-        const glm::vec3 topLeft{-6.f, 21.f, 0.f};
-        const glm::vec3 topRight{721.f, 21.f, 0.f};
-        const glm::vec3 bottomRight{721.f, -271.f, 0.f};
-        const glm::vec3 bottomLeft{-6.f, -271.f, 0.f};
-
         const std::vector<TexVert> quadVerts = {
-                                                TexVert{glm::vec3(0.f, 1.f, 0.f), topLeft},
-                                                TexVert{glm::vec3(1.f, 1.f, 0.f), topRight},
-                                                TexVert{glm::vec3(1.f, 0.f, 0.f), bottomRight},
-                                                TexVert{glm::vec3(0.f, 0.f, 0.f), bottomLeft},
+                                                TexVert{glm::vec3(0.f, 1.f, 0.f), {-6.f,   21.f,   0.f}},
+                                                TexVert{glm::vec3(1.f, 1.f, 0.f), {721.f,  21.f,   0.f}},
+                                                TexVert{glm::vec3(1.f, 0.f, 0.f), {721.f, -271.f,  0.f}},
+                                                TexVert{glm::vec3(0.f, 0.f, 0.f), {-6.f,  -271.f,  0.f}},
                                                 };
 
         getOpenGL().renderTexturedQuads(
@@ -1163,14 +1182,11 @@ QImage MapCanvas::exportToImage(const ExportImageOptions &options)
             );
     }
 
-    // Draw map layers
-    paintMap();  // includes terrain, walls, exits
-    if (options.includeMarkers) paintBatchedInfomarks();
-    if (options.includeNotes) paintSelections();
-    if (options.includeConnections) paintDifferences();
-    if (options.includeLabels) paintCharacters();
+    renderExportLayers(options);
 
     fbo.release();
-    return fbo.toImage().mirrored();
-}
 
+    QImage image = fbo.toImage();
+    qDebug() << "[Export] Final image size:" << image.size();
+    return image;
+}

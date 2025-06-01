@@ -111,6 +111,9 @@ private:
     FrameRateController m_frameRateController;
     std::unique_ptr<QOpenGLDebugLogger> m_logger;
     Signal2Lifetime m_lifetime;
+    glm::vec2 m_viewportCenter;
+    glm::ivec2 m_viewportSize;
+    float m_viewportZoom = 1.0f;
 
 public:
     explicit MapCanvas(MapData &mapData,
@@ -142,6 +145,8 @@ public:
         zoomChanged();
     }
     NODISCARD float getRawZoom() const { return m_scaleFactor.getRaw(); }
+    std::optional<QRect> getSelectedRoomBounds() const;
+    std::optional<QRect> getVisibleRoomBounds() const;
 
 public:
     NODISCARD auto width() const { return QOpenGLWidget::width(); }
@@ -218,6 +223,7 @@ private:
     void paintCharacters();
     void paintDifferences();
     void forceUpdateMeshes();
+    void renderExportLayers(const ExportImageOptions &options);
 
 public:
     void slot_rebuildMeshes() { forceUpdateMeshes(); }

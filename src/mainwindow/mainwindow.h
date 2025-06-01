@@ -267,6 +267,7 @@ public:
     void loadFile(const QString &fileName);
     void setCurrentFile(const QString &fileName);
     void percentageChanged(uint32_t);
+    MapCanvas* getMapCanvas() const;
 
 private:
     void showAsyncFailure(const QString &fileName, AsyncTypeEnum mode, bool wasCanceled);

@@ -550,6 +550,7 @@ set(mmapper_UIS
     client/ClientWidget.ui
     clock/mumeclockwidget.ui
     mainwindow/aboutdialog.ui
+    mainwindow/exportmapimagedialog.ui
     mainwindow/infomarkseditdlg.ui
     mainwindow/findroomsdlg.ui
     mainwindow/roomeditattrdlg.ui

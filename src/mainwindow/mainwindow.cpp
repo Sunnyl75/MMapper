@@ -1969,16 +1969,52 @@ void MainWindow::slot_openNewbieHelp()
 
 void MainWindow::slot_exportMapImage()
 {
-    ExportMapImageDialog dialog(this);
-    if (dialog.exec() != QDialog::Accepted) {
-        return;  // User cancelled
+    ExportMapImageDialog dialog(getMapCanvas(), this);  // Create once
+
+    while (true) {
+        if (dialog.exec() != QDialog::Accepted)
+            return;  // User cancelled
+
+        dialog.saveSettings();  // Save settings immediately after acceptance
+
+        if (!dialog.validateImageSize()) {
+            const int numRoomsX = dialog.east() - dialog.west() + 1;
+            const int numRoomsY = dialog.north() - dialog.south() + 1;
+            const int tileSize = dialog.getOptions().tileSize;
+            const int pixelWidth  = numRoomsX * tileSize;
+            const int pixelHeight = numRoomsY * tileSize;
+            const double estimatedMB = (pixelWidth * pixelHeight * 4.0) / (1024.0 * 1024.0);  // RGBA
+
+            QMessageBox::StandardButton reply = QMessageBox::question(
+                this,
+                tr("Large Image Warning"),
+                tr("The estimated export size is %1 × %2 pixels (~%3 MB).\n\n"
+                   "This may exceed GPU or system limits and crash the application.\n\n"
+                   "Would you like to continue?")
+                    .arg(pixelWidth)
+                    .arg(pixelHeight)
+                    .arg(QString::number(estimatedMB, 'f', 1)),
+                QMessageBox::Ok | QMessageBox::Cancel,
+                QMessageBox::Cancel
+                );
+
+            if (reply != QMessageBox::Ok) {
+                qDebug() << "Export cancelled due to large size warning.";
+                continue;  // Show dialog again
+            }
+        }
+
+        break;  // Valid and accepted
     }
+
+    const ExportImageOptions options = dialog.getOptions();
 
     const QString fileName = QFileDialog::getSaveFileName(
         this,
         tr("Export Map Image"),
         QDir::homePath() + "/map-export.png",
-        tr("PNG Images (*.png)"));
+        tr("PNG Images (*.png)")
+        );
 
     if (fileName.isEmpty()) {
         qDebug() << "Export cancelled: no file name selected.";
@@ -1990,7 +2026,6 @@ void MainWindow::slot_exportMapImage()
         return;
     }
 
-    const ExportImageOptions options = dialog.getOptions();
     QImage image = m_mapWindow->getCanvas()->exportToImage(options);
 
     if (image.isNull()) {
@@ -2000,7 +2035,6 @@ void MainWindow::slot_exportMapImage()
     }
 
     qDebug() << "Attempting to save image to:" << fileName;
-    qDebug() << "Supported image formats:" << QImageWriter::supportedImageFormats();
 
     if (!image.save(fileName)) {
         qDebug() << "Image save failed.";
@@ -2009,6 +2043,10 @@ void MainWindow::slot_exportMapImage()
         qDebug() << "Image saved successfully.";
         QMessageBox::information(this, tr("Export Complete"), tr("Map image exported to %1.").arg(fileName));
     }
+}
+
+MapCanvas* MainWindow::getMapCanvas() const {
+    return m_mapWindow ? m_mapWindow->getCanvas() : nullptr;
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *event)

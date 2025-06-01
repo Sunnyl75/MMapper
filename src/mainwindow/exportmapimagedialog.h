@@ -2,6 +2,7 @@
 #define EXPORTMAPIMAGEDIALOG_H
 
 #include <QDialog>
+#include "../display/mapcanvas.h"
 
 namespace Ui {
 class ExportMapImageDialog;
@@ -12,37 +13,46 @@ struct ExportImageOptions {
     int south;
     int west;
     int east;
-    int zoomLevel;
+    int tileSize;
     bool includeBackground;
-    bool includeLabels;
+    bool includeCharacters;
     bool includeMarkers;
-    bool includeNotes;
-    bool includeConnections;
+    bool includeSelectionIndicators = false;
 };
 
 class ExportMapImageDialog : public QDialog
 {
     Q_OBJECT
 
+    static int lastNorth;
+    static int lastSouth;
+    static int lastWest;
+    static int lastEast;
+
 public:
-    explicit ExportMapImageDialog(QWidget *parent = nullptr);
+    explicit ExportMapImageDialog(MapCanvas* canvas, QWidget *parent = nullptr);
     ~ExportMapImageDialog();
 
     ExportImageOptions getOptions() const;
+    bool validateImageSize() const;
+    void saveSettings() const;
 
 private:
     Ui::ExportMapImageDialog *ui;
+    MapCanvas* m_canvas;
+    void loadSettings();
 
 public:
     int north() const;
     int south() const;
     int west() const;
     int east() const;
-    int zoomLevel() const;
+    int tileSize() const;
     bool includeBackground() const;
 
 private slots:
-    void on_buttonBox_accepted();
+    void updateEstimatedImageSize();
+    void on_useSelectionButton_clicked();
 };
 
 #endif // EXPORTMAPIMAGEDIALOG_H
