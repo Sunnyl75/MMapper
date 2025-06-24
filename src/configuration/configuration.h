@@ -291,6 +291,7 @@ public:
         bool npcHide = false;
         bool showTokens   = true;
         int tokenIconSize = 32;
+        QMap<QString, QString> tokenOverrides;
 
     private:
         SUBGROUP();
