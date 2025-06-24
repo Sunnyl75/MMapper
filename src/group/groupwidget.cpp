@@ -755,4 +755,6 @@ void GroupWidget::slot_updateLabels()
     const bool hide_mana = !one_character_had_mana();
     m_table->setColumnHidden(static_cast<int>(GroupModel::ColumnTypeEnum::MANA), hide_mana);
     m_table->setColumnHidden(static_cast<int>(GroupModel::ColumnTypeEnum::MANA_PERCENT), hide_mana);
+    const bool hide_tokens = !getConfig().groupManager.showTokens;
+    m_table->setColumnHidden(static_cast<int>(GroupModel::ColumnTypeEnum::CHARACTER_TOKEN), hide_tokens);
 }
