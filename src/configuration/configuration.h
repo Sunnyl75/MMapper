@@ -289,6 +289,8 @@ public:
         bool npcColorOverride = false;
         bool npcSortBottom = false;
         bool npcHide = false;
+        bool showTokens   = true;
+        int tokenIconSize = 32;
 
     private:
         SUBGROUP();
