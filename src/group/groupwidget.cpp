@@ -35,8 +35,6 @@
 #include <QDir>
 #include <QMessageBox>
 
-extern const QString kForceFallback;
-
 static constexpr const int GROUP_COLUMN_COUNT = 10;
 static_assert(GROUP_COLUMN_COUNT == static_cast<int>(GroupModel::ColumnTypeEnum::ROOM_NAME) + 1,
               "# of columns");
@@ -630,7 +628,7 @@ GroupWidget::GroupWidget(Mmapper2Group *const group, MapData *const md, QWidget 
     } else {
         m_model.setCharacters({});
     }
-    m_model.setTokenManager(&tokenManager);
+    m_model.setTokenManager(&tokenManager());
 
     auto *layout = new QVBoxLayout(this);
     layout->setAlignment(Qt::AlignTop);
