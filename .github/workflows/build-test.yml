@@ -90,7 +90,8 @@ jobs:
       name: Install Packages for Mac
       run: |
         brew install cmake ninja lcov
-        echo "MMAPPER_CMAKE_EXTRA=-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR -DUSE_CODE_COVERAGE=true" >> $GITHUB_ENV
+        echo "$QT_ROOT_DIR/bin" >> $GITHUB_PATH
+        MMAPPER_CMAKE_EXTRA=-DCMAKE_PREFIX_PATH=$QT_ROOT_DIR -DUSE_CODE_COVERAGE=true" >> $GITHUB_ENV
         echo "COVERAGE=false" >> $GITHUB_ENV
 
       #
