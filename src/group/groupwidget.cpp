@@ -825,7 +825,7 @@ GroupWidget::GroupWidget(Mmapper2Group *const group, MapData *const md, QWidget 
     const int row  = std::max(icon, m_table->fontMetrics().height() + 4);
     m_table->verticalHeader()->setDefaultSectionSize(row);
 
-    const int shown = std::max(1, static_cast<int>(std::lround(row * 0.85f)));
+    const int shown = std::max(1, static_cast<int>(std::lround(static_cast<double>(row) * 0.85)));
     m_table->setIconSize(QSize(shown, shown));
     m_table->resizeColumnToContents(static_cast<int>(ColumnTypeEnum::CHARACTER_TOKEN));
     m_table->resizeRowsToContents();
@@ -977,7 +977,7 @@ void GroupWidget::updateColumnVisibility()
         const int row = std::max(icon, fm.height() + 4);
         m_table->verticalHeader()->setDefaultSectionSize(row);
 
-        const int shown = std::max(1, static_cast<int>(std::lround(row * 0.85f)));
+        const int shown = std::max(1, static_cast<int>(std::lround(static_cast<double>(row) * 0.85)));
         m_table->setIconSize(QSize(shown, shown));
 
         // Recalculate column/row sizes for token column
