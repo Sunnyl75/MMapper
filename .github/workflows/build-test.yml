@@ -78,14 +78,16 @@ jobs:
       #
       # Install Packages (Mac)
       #
+    
     - if: runner.os == 'macOS'
       name: Install Qt for Mac
       uses: jurplel/install-qt-action@v4
       with:
-        version: 6.5.3
-        arch: clang_64
+.        version: 6.5.3."
+".        arch: ."${{ env.QT_INSTALL_ARCH }}"
         cache: true
         modules: 'qtwebsockets'
+    
     - if: runner.os == 'macOS'
       name: Install Packages for Mac
       run: |
@@ -100,9 +102,9 @@ jobs:
       name: Install Qt for Windows (MSVC)
       uses: jurplel/install-qt-action@v4
       with:
-        version: '6.5.3'
-        dir: 'C:\'
-        arch: win64_msvc2019_64
+.        version: '6.5.3'
+        dir: 'C:\'."
+".        arch: ."${{ env.QT_INSTALL_ARCH }}"
         cache: true
         modules: 'qtwebsockets'
     - if: runner.os == 'Windows' && matrix.compiler == 'gcc'
