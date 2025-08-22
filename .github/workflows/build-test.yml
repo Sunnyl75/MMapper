@@ -190,6 +190,11 @@ jobs:
       #
       # Package
       #
+    - name: Deploy Qt frameworks (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        APP="$GITHUB_WORKSPACE/build/src/mmapper.app"
+        "$QT_ROOT_DIR/bin/macdeployqt" "$APP" -verbose=2 -libpath "$QT_ROOT_DIR/lib"
     - name: Package MMapper
       run: cd build && cpack
     - if: runner.os == 'Linux'
