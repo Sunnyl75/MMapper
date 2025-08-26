@@ -3,7 +3,7 @@ name: build-test
 on:
   push:
     branches:
-    - master
+      - master
   pull_request:
   workflow_dispatch:
 
@@ -17,237 +17,246 @@ jobs:
         os: [windows-2022, macos-latest, macos-13, ubuntu-24.04]
         compiler: ['clang', 'gcc', 'msvc']
         exclude:
-        - os: ubuntu-24.04
-          compiler: 'msvc'
-        - os: macos-latest
-          compiler: 'gcc'
-        - os: macos-latest
-          compiler: 'msvc'
-        - os: windows-2022
-          compiler: 'clang'
+          - os: ubuntu-24.04
+            compiler: 'msvc'
+          - os: macos-latest
+            compiler: 'gcc'
+          - os: macos-latest
+            compiler: 'msvc'
+          - os: windows-2022
+            compiler: 'clang'
+
     steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        submodules: true
-    - name: Delete beta tag
-      shell: bash
-      run: |
-        if git tag | grep -q '^beta$'; then
-          git tag -d beta
-        fi
-    - name: Get Git tag description
-      id: git_info
-      run: |
-        echo "GIT_TAG=$(git describe --tags --always --long)" >> $GITHUB_ENV
-    - if: runner.os == 'Windows'
-      uses: lukka/get-cmake@latest
-    - if: matrix.compiler == 'msvc'
-      uses: ilammy/msvc-dev-cmd@v1
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Delete beta tag
+        shell: bash
+        run: |
+          if git tag | grep -q '^beta$'; then
+            git tag -d beta
+          fi
+
+      - name: Get Git tag description
+        id: git_info
+        run: echo "GIT_TAG=$(git describe --tags --always --long)" >> $GITHUB_ENV
+
+      - if: runner.os == 'Windows'
+        uses: lukka/get-cmake@latest
+
+      - if: matrix.compiler == 'msvc'
+        uses: ilammy/msvc-dev-cmd@v1
 
       #
       # Install Packages (Ubuntu)
       #
-    - if: runner.os == 'Linux'
-      name: Install Packages for Ubuntu
-      run: |
-        sudo apt update -qq
-        sudo apt install -y \
-          qt6-base-dev qt6-base-dev-tools libqt6opengl6-dev libqt6websockets6-dev \
-          libgl1-mesa-dev qtkeychain-qt6-dev build-essential cmake ninja-build mold git \
-          zlib1g-dev libssl-dev
-    - if: runner.os == 'Linux' && matrix.compiler == 'gcc'
-      name: Install GCC for Ubuntu
-      run: |
-        sudo apt install -y gcc-13 g++-13 lcov
-        echo "QMAKESPEC=linux-g++" >> $GITHUB_ENV
-        echo "CC=gcc-13" >> $GITHUB_ENV
-        echo "CXX=g++-13" >> $GITHUB_ENV
-        echo "MMAPPER_CMAKE_EXTRA=-DUSE_CODE_COVERAGE=true -DUSE_MOLD=true" >> $GITHUB_ENV
-        echo "COVERAGE=true" >> $GITHUB_ENV
-    - if: runner.os == 'Linux' && matrix.compiler == 'clang'
-      name: Install Clang for Ubuntu
-      run: |
-        sudo apt install -y clang-18 binutils
-        echo "QMAKESPEC=linux-clang" >> $GITHUB_ENV
-        echo "CC=clang-18" >> $GITHUB_ENV
-        echo "CXX=clang++-18" >> $GITHUB_ENV
-        echo "STYLE=true" >> $GITHUB_ENV
-        echo "MMAPPER_CMAKE_EXTRA=-DUSE_MOLD=true" >> $GITHUB_ENV
+      - if: runner.os == 'Linux'
+        name: Install Packages for Ubuntu
+        run: |
+          sudo apt update -qq
+          sudo apt install -y \
+            qt6-base-dev qt6-base-dev-tools libqt6opengl6-dev libqt6websockets6-dev \
+            libgl1-mesa-dev qtkeychain-qt6-dev build-essential cmake ninja-build mold git \
+            zlib1g-dev libssl-dev
+
+      - if: runner.os == 'Linux' && matrix.compiler == 'gcc'
+        name: Install GCC for Ubuntu
+        run: |
+          sudo apt install -y gcc-13 g++-13 lcov
+          echo "QMAKESPEC=linux-g++" >> $GITHUB_ENV
+          echo "CC=gcc-13" >> $GITHUB_ENV
+          echo "CXX=g++-13" >> $GITHUB_ENV
+          echo "MMAPPER_CMAKE_EXTRA=-DUSE_CODE_COVERAGE=true -DUSE_MOLD=true" >> $GITHUB_ENV
+          echo "COVERAGE=true" >> $GITHUB_ENV
+
+      - if: runner.os == 'Linux' && matrix.compiler == 'clang'
+        name: Install Clang for Ubuntu
+        run: |
+          sudo apt install -y clang-18 binutils
+          echo "QMAKESPEC=linux-clang" >> $GITHUB_ENV
+          echo "CC=clang-18" >> $GITHUB_ENV
+          echo "CXX=clang++-18" >> $GITHUB_ENV
+          echo "STYLE=true" >> $GITHUB_ENV
+          echo "MMAPPER_CMAKE_EXTRA=-DUSE_MOLD=true" >> $GITHUB_ENV
 
       #
-      # Install Packages (Mac)
+      # Install Packages (macOS)
       #
-    
-    - if: runner.os == 'macOS'
-      name: Install Qt for Mac
-      uses: jurplel/install-qt-action@v4
-      with:
-.        version: 6.5.3."
-".        arch: ."${{ env.QT_INSTALL_ARCH }}"
-        cache: true
-        modules: 'qtwebsockets'
-    
-    - if: runner.os == 'macOS'
-      name: Install Packages for Mac
-      run: |
-        brew install cmake ninja lcov
-        echo "MMAPPER_CMAKE_EXTRA=-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR -DUSE_CODE_COVERAGE=true" >> $GITHUB_ENV
-        echo "COVERAGE=false" >> $GITHUB_ENV
+      - name: Set mac arch vars
+        if: runner.os == 'macOS'
+        run: |
+          if [[ "${{ matrix.os }}" == "macos-13" ]]; then
+            echo "QT_INSTALL_ARCH=clang_64" >> $GITHUB_ENV
+            echo "CMAKE_OSX_ARCH=x86_64" >> $GITHUB_ENV
+          else
+            echo "QT_INSTALL_ARCH=clang_arm64" >> $GITHUB_ENV
+            echo "CMAKE_OSX_ARCH=arm64" >> $GITHUB_ENV
+          fi
+
+      - if: runner.os == 'macOS'
+        name: Install Qt for Mac
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.5.3
+          arch: ${{ env.QT_INSTALL_ARCH }}
+          cache: true
+          modules: 'qtwebsockets'
+
+      - name: Install Packages for Mac
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake ninja lcov
+          echo "$QT_ROOT_DIR/bin" >> $GITHUB_PATH
+          echo "MMAPPER_CMAKE_EXTRA=-DCMAKE_PREFIX_PATH=$QT_ROOT_DIR -DUSE_CODE_COVERAGE=true -DCPACK_DMG_FORMAT=UDZO -DCMAKE_OSX_ARCHITECTURES=${CMAKE_OSX_ARCH}" >> $GITHUB_ENV
+          echo "COVERAGE=false" >> $GITHUB_ENV
 
       #
       # Install Packages (Windows)
       #
-    - if: runner.os == 'Windows' && matrix.compiler == 'msvc'
-      name: Install Qt for Windows (MSVC)
-      uses: jurplel/install-qt-action@v4
-      with:
-.        version: '6.5.3'
-        dir: 'C:\'."
-".        arch: ."${{ env.QT_INSTALL_ARCH }}"
-        cache: true
-        modules: 'qtwebsockets'
-    - if: runner.os == 'Windows' && matrix.compiler == 'gcc'
-      name: Install Qt for Windows (MinGW)
-      uses: jurplel/install-qt-action@v4
-      with:
-        version: '6.5.3'
-        dir: 'C:\'
-        arch: win64_mingw
-        cache: true
-        modules: 'qtwebsockets'
-        tools: 'tools_mingw1310'
+      - if: runner.os == 'Windows' && matrix.compiler == 'msvc'
+        name: Install Qt for Windows (MSVC)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.5.3'
+          dir: 'C:\'
+          arch: win64_msvc2019_64
+          cache: true
+          modules: 'qtwebsockets'
+
+      - if: runner.os == 'Windows' && matrix.compiler == 'gcc'
+        name: Install Qt for Windows (MinGW)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.5.3'
+          dir: 'C:\'
+          arch: win64_mingw
+          cache: true
+          modules: 'qtwebsockets'
+          tools: 'tools_mingw1310'
 
       #
       # Build
       #
-    - if: runner.os == 'Windows'
-      name: Build MMapper for Windows
-      shell: pwsh
-      run: |
-        mkdir ${{ github.workspace }}/artifact
-        mkdir build
-        cd build
-        cmake --version
-        if ('${{ matrix.compiler }}' -eq 'gcc') {
-          echo "C:/Qt/Tools/mingw1310_64/bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          $env:PATH = "C:\Qt\Tools\mingw1310_64\bin;$env:PATH"
-        }
-        $packageDir = ($env:GITHUB_WORKSPACE -replace '\\', '/') + "/artifact"
-        cmake -DCMAKE_BUILD_TYPE=Debug -G 'Ninja' -DWITH_MAP=OFF -DCPACK_PACKAGE_DIRECTORY="$packageDir" -DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR -DWITH_WEBSOCKET=ON -DWITH_QTKEYCHAIN=ON -S .. || exit -1
-        cmake --build . --parallel
-    - if: runner.os == 'Linux' || runner.os == 'macOS'
-      name: Build MMapper for Linux and Mac
-      run: |
-        mkdir -p build ${{ github.workspace }}/artifact
-        cd build
-        cmake --version
-        cmake -DCMAKE_BUILD_TYPE=Debug -G 'Ninja' -DWITH_MAP=OFF -DCPACK_PACKAGE_DIRECTORY=${{ github.workspace }}/artifact $MMAPPER_CMAKE_EXTRA -DWITH_WEBSOCKET=ON -DWITH_QTKEYCHAIN=ON -S .. || exit -1
-        cmake --build . --parallel
+      - if: runner.os == 'Windows'
+        name: Build MMapper for Windows
+        shell: pwsh
+        run: |
+          mkdir ${{ github.workspace }}/artifact
+          mkdir build
+          cd build
+          cmake --version
+          if ('${{ matrix.compiler }}' -eq 'gcc') {
+            echo "C:/Qt/Tools/mingw1310_64/bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+            $env:PATH = "C:\Qt\Tools\mingw1310_64\bin;$env:PATH"
+          }
+          $packageDir = ($env:GITHUB_WORKSPACE -replace '\\', '/') + "/artifact"
+          cmake -DCMAKE_BUILD_TYPE=Debug -G 'Ninja' -DWITH_MAP=OFF -DCPACK_PACKAGE_DIRECTORY="$packageDir" -DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR -DWITH_WEBSOCKET=ON -DWITH_QTKEYCHAIN=ON -S .. || exit -1
+          cmake --build . --parallel
+
+      - if: runner.os == 'Linux' || runner.os == 'macOS'
+        name: Build MMapper for Linux and Mac
+        run: |
+          mkdir -p build ${{ github.workspace }}/artifact
+          cd build
+          cmake --version
+          cmake -DCMAKE_BUILD_TYPE=Debug -G 'Ninja' -DWITH_MAP=OFF -DCPACK_PACKAGE_DIRECTORY=${{ github.workspace }}/artifact $MMAPPER_CMAKE_EXTRA -DWITH_WEBSOCKET=ON -DWITH_QTKEYCHAIN=ON -S .. || exit -1
+          cmake --build . --parallel
 
       #
-      # Run tests
+      # Tests (coverage only on Linux gcc)
       #
-    - if: env.COVERAGE == 'true'
-      name: Prepare lcov counters
-      run: cd build && lcov --zerocounters --directory .
-    - name: Run unit tests
-      run: cd build && ctest -V --no-compress-output -T test --output-junit ../ctest-to-junit-results.xml
-      env:
-        QT_QPA_PLATFORM: offscreen
-        ASAN_OPTIONS: detect_leaks=0
-    - name: Upload test results
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results ${{ matrix.os }} ${{ matrix.compiler }}
-        path: ctest-to-junit-results.xml
-    - if: env.COVERAGE == 'true'
-      name: Run lcov
-      run: |
-        cd build
-        lcov --directory . --capture --output-file coverage.info
-        lcov --list coverage.info
-        lcov --remove coverage.info '/usr/*' --output-file filtered.info
-    - if: env.COVERAGE == 'true'
-      uses: codecov/codecov-action@v5
-      with:
-        files: ./build/filtered.info
-    - if: env.STYLE == 'true'
-      name: Text Encoding Sanity Check
-      run: |
-        cd build
-        if  [[ -n $(nm -C src/mmapper | grep -w 'QString::\(to\|from\)StdString') ]]; then
-          nm -C src/mmapper | grep -w 'QString::\(to\|from\)StdString'
-          echo
-          echo
-          echo "Please avoid using QString::fromStdString() and QString::toStdString()"
-          echo
-          echo "Both functions assume the user wants utf8, but MMapper almost always expects"
-          echo "std::string to have latin1 encoding."
-          echo
-          echo "Convert any uses to corresponding functions in TextUtils e.g. ::toQStringUtf8()"
-          exit -1
-        fi
+      - if: env.COVERAGE == 'true'
+        name: Prepare lcov counters
+        run: cd build && lcov --zerocounters --directory .
+
+      - name: Run unit tests
+        run: cd build && ctest -V --no-compress-output -T test --output-junit ../ctest-to-junit-results.xml
+        env:
+          QT_QPA_PLATFORM: offscreen
+          ASAN_OPTIONS: detect_leaks=0
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results ${{ matrix.os }} ${{ matrix.compiler }}
+          path: ctest-to-junit-results.xml
+
+      - if: env.COVERAGE == 'true'
+        name: Run lcov
+        run: |
+          cd build
+          lcov --directory . --capture --output-file coverage.info
+          lcov --list coverage.info
+          lcov --remove coverage.info '/usr/*' --output-file filtered.info
+
+      - if: env.COVERAGE == 'true'
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./build/filtered.info
+
+      - if: env.STYLE == 'true'
+        name: Text Encoding Sanity Check
+        run: |
+          cd build
+          if  [[ -n $(nm -C src/mmapper | grep -w 'QString::\(to\|from\)StdString') ]]; then
+            nm -C src/mmapper | grep -w 'QString::\(to\|from\)StdString'
+            echo
+            echo
+            echo "Please avoid using QString::fromStdString() and QString::toStdString()"
+            echo
+            echo "Both functions assume the user wants utf8, but MMapper almost always expects"
+            echo "std::string to have latin1 encoding."
+            echo
+            echo "Convert any uses to corresponding functions in TextUtils e.g. ::toQStringUtf8()"
+            exit -1
+          fi
 
       #
-      # Package
+      # macOS deploy (before packaging)
       #
-    - name: Deploy Qt frameworks (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        APP="$GITHUB_WORKSPACE/build/src/mmapper.app"
-        "$QT_ROOT_DIR/bin/macdeployqt" "$APP" -verbose=2 -libpath "$QT_ROOT_DIR/lib"
-    - name: Package MMapper
-      run: cd build && cpack
-    - if: runner.os == 'Linux'
-      name: Get Linux package file base name
-      id: get_linux_package_name
-      run: |
-        PACKAGE_FILE=$(ls ${{ github.workspace }}/artifact/*.deb)
-        PACKAGE_BASENAME=$(basename "$PACKAGE_FILE" | sed 's/\./-/g')
-        echo "PACKAGE_BASENAME=$PACKAGE_BASENAME" >> $GITHUB_OUTPUT
-    - if: runner.os == 'macOS'
-      name: Get Mac package file base name
-      id: get_mac_package_name
-      run: |
-        PACKAGE_FILE=$(ls ${{ github.workspace }}/artifact/*.dmg)
-        PACKAGE_BASENAME=$(basename "$PACKAGE_FILE" | sed 's/\./-/g')
-        echo "PACKAGE_BASENAME=$PACKAGE_BASENAME" >> $GITHUB_OUTPUT
-    - if: runner.os == 'Windows'
-      name: Get Windows package file base name
-      id: get_windows_package_name
-      shell: pwsh
-      run: |
-        $packageFile = Get-ChildItem -Path "${{ github.workspace }}/artifact/*.exe" | Select-Object -First 1
-        $packageBasename = $packageFile.BaseName -replace '\.', '-'
-        "PACKAGE_BASENAME=$packageBasename" >> $env:GITHUB_OUTPUT
-    - if: runner.os == 'macOS'
-      name: Upload Package for Mac
-      uses: actions/upload-artifact@v4
-      with:
-        name: debug-${{ steps.get_mac_package_name.outputs.PACKAGE_BASENAME }}
-        path: ${{ github.workspace }}/artifact/*.dmg*
-    - if: runner.os == 'Linux'
-      name: Upload Package for Ubuntu
-      uses: actions/upload-artifact@v4
-      with:
-        name: debug-${{ matrix.compiler }}-${{ steps.get_linux_package_name.outputs.PACKAGE_BASENAME }}
-        path: ${{ github.workspace }}/artifact/*.deb*
-    - if: runner.os == 'Windows'
-      name: Upload Package for Windows
-      uses: actions/upload-artifact@v4
-      with:
-        name: debug-${{ matrix.compiler }}-${{ steps.get_windows_package_name.outputs.PACKAGE_BASENAME }}
-        path: ${{ github.workspace }}/artifact/*.exe*
+      - name: Deploy Qt frameworks (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          APP="$GITHUB_WORKSPACE/build/src/mmapper.app"
+          "$QT_ROOT_DIR/bin/macdeployqt" "$APP" -verbose=2 -libpath "$QT_ROOT_DIR/lib"
+
+      #
+      # Package + Upload
+      #
+      - name: Package MMapper
+        run: cd build && cpack
+
+      - if: runner.os == 'Linux'
+        name: Upload Package for Ubuntu
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-${{ matrix.compiler }}
+          path: ${{ github.workspace }}/artifact/*.deb*
+
+      - if: runner.os == 'macOS'
+        name: Upload Package for Mac
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-${{ matrix.os }}
+          path: ${{ github.workspace }}/artifact/*.dmg*
+
+      - if: runner.os == 'Windows'
+        name: Upload Package for Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-${{ matrix.compiler }}
+          path: ${{ github.workspace }}/artifact/*.exe*
 
   report:
     name: Test Report
     runs-on: ubuntu-latest
     needs: build
     steps:
-    - uses: dorny/test-reporter@v2
-      with:
-        artifact: /test-results (.*)/
-        name: Test Report $1
-        path: '*.xml'
-        reporter: java-junit
+      - uses: dorny/test-reporter@v2
+        with:
+          artifact: /test-results (.*)/
+          name: Test Report $1
+          path: '*.xml'
+          reporter: java-junit
