@@ -91,7 +91,7 @@ jobs:
             echo "QT_INSTALL_ARCH=clang_64" >> $GITHUB_ENV
             echo "CMAKE_OSX_ARCH=x86_64" >> $GITHUB_ENV
           else
-            echo "QT_INSTALL_ARCH=clang_arm64" >> $GITHUB_ENV
+            echo "QT_INSTALL_ARCH=clang_64" >> $GITHUB_ENV
             echo "CMAKE_OSX_ARCH=arm64" >> $GITHUB_ENV
           fi
 
@@ -226,7 +226,7 @@ jobs:
       # Package + Upload
       #
       - name: Package MMapper
-        run: cd build && cpack
+        run: cd build && cpack -D CPACK_DMG_FORMAT=UDZO
 
       - if: runner.os == 'Linux'
         name: Upload Package for Ubuntu
