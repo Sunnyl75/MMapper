@@ -111,9 +111,9 @@ jobs:
       - name: Install Packages for Mac
         if: runner.os == 'macOS'
         run: |
-          brew install cmake ninja lcov
+          brew install cmake ninja lcov qtkeychain
           echo "$QT_ROOT_DIR/bin" >> $GITHUB_PATH
-          echo "MMAPPER_CMAKE_EXTRA=-DCMAKE_PREFIX_PATH=$QT_ROOT_DIR -DUSE_CODE_COVERAGE=true -DCPACK_DMG_FORMAT=UDZO -DCMAKE_OSX_ARCHITECTURES=${CMAKE_OSX_ARCH}" >> $GITHUB_ENV
+          echo "MMAPPER_CMAKE_EXTRA=-DCMAKE_PREFIX_PATH= -DCMAKE_BUILD_TYPE=Release -DWITH_WEBSOCKET=ON -DWITH_QTKEYCHAIN=ON -DCPACK_DMG_FORMAT=UDZO -DCMAKE_OSX_ARCHITECTURES=" >> $GITHUB_ENV
           echo "COVERAGE=false" >> $GITHUB_ENV
 
       #
@@ -229,6 +229,11 @@ jobs:
       #
       # Package + Upload
       #
+      - name: Ad-hoc codesign (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          APP="$GITHUB_WORKSPACE/build/src/mmapper.app"
+          /usr/bin/codesign --force --deep --sign - "$APP"
       - name: Package MMapper
         run: cd build && cpack -D CPACK_DMG_FORMAT=UDZO -D CPACK_PACKAGE_FILE_NAME="mmapper--Mac-" -V
 
