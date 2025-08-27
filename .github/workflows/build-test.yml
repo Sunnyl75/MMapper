@@ -230,7 +230,7 @@ jobs:
       # Package + Upload
       #
       - name: Package MMapper
-        run: cd build && cpack -D CPACK_DMG_FORMAT=UDZO
+        run: cd build && cpack -D CPACK_DMG_FORMAT=UDZO -D CPACK_PACKAGE_FILE_NAME="mmapper--Mac-" -V
 
       - if: runner.os == 'Linux'
         name: Upload Package for Ubuntu
