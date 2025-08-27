@@ -41,7 +41,11 @@ jobs:
 
       - name: Get Git tag description
         id: git_info
-        run: echo "GIT_TAG=$(git describe --tags --always --long)" >> $GITHUB_ENV
+        run: |
+          RAW=$(git describe --tags --always --long)
+          SAFE=${RAW//[\/ ]/-}
+          SAFE=$(printf "%s" "$SAFE" | tr -cd "[:alnum:]._-")
+          echo "GIT_TAG=$SAFE" >> $GITHUB_ENV
 
       - if: runner.os == 'Windows'
         uses: lukka/get-cmake@latest
