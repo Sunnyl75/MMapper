@@ -367,7 +367,7 @@ void MumeTcpSocket::virt_onConnect()
 MumeWebSocket::MumeWebSocket(QObject *parent, MumeSocketOutputs &outputs)
     : MumeSocket(parent, outputs)
 #ifndef MMAPPER_NO_WEBSOCKET
-    , m_socket{QLatin1String(""), QWebSocketProtocol::VersionLatest, this}
+    , m_socket{QString(), QWebSocketProtocol::VersionLatest, this}
 #endif
 {
 #ifndef MMAPPER_NO_WEBSOCKET
