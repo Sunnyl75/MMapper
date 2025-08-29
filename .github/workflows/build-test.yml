@@ -26,19 +26,17 @@ jobs:
           - os: windows-2022
             compiler: 'clang'
 
-    steps:    - name: Remove Homebrew Qt headers on macOS 13
-      if: matrix.os == 'macos-13'
-      run: |
-        set -euxo pipefail
-        # Unlink any brew Qt and remove stray headers that collide with vendored Qt 6
-        brew unlink qt@5 || true
-        brew unlink qt || true
-        sudo rm -rf /usr/local/include/Qt* /usr/local/lib/cmake/Qt* /usr/local/lib/Qt* || true
-        sudo rm -rf /usr/local/opt/qt* /usr/local/Cellar/qt* || true
-        # Also clear include path envs that might point into /usr/local/include
-        echo 'CPATH=' >> $GITHUB_ENV
-        echo 'CPLUS_INCLUDE_PATH=' >> $GITHUB_ENV
-
+    steps:
+      - name: Remove Homebrew Qt headers on macOS 13
+        if: matrix.os == 'macos-13'
+        run: |
+          set -euxo pipefail
+          brew unlink qt@5 || true
+          brew unlink qt || true
+          sudo rm -rf /usr/local/include/Qt* /usr/local/lib/cmake/Qt* /usr/local/lib/Qt* || true
+          sudo rm -rf /usr/local/opt/qt* /usr/local/Cellar/qt* || true
+          echo 'CPATH=' >> $GITHUB_ENV
+          echo 'CPLUS_INCLUDE_PATH=' >> $GITHUB_ENV
       - uses: actions/checkout@v4
       - name: Delete beta tag
         shell: bash
