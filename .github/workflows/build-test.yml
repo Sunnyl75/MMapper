@@ -42,16 +42,6 @@ jobs:
         if: matrix.os == 'macos-13'
         run: |
           ls -la /usr/local/include/QtCore 2>/dev/null || echo 'No /usr/local/include/QtCore'
-      - name: Remove Homebrew Qt headers on macOS 13 (post-checkout)
-        if: matrix.os == 'macos-13'
-        run: |
-          set -euxo pipefail
-          brew list --versions qt@5 >/dev/null 2>&1 && brew unlink qt@5 || true
-          brew list --versions qt >/dev/null 2>&1 && brew unlink qt || true
-          sudo rm -rf /usr/local/include/Qt* /usr/local/lib/cmake/Qt* /usr/local/lib/Qt* || true
-          sudo rm -rf /usr/local/opt/qt* /usr/local/Cellar/qt* || true
-          echo 'CPATH=' >> $GITHUB_ENV
-          echo 'CPLUS_INCLUDE_PATH=' >> $GITHUB_ENV
       - name: Debug post: list Homebrew Qt headers
         if: matrix.os == 'macos-13'
         run: |
