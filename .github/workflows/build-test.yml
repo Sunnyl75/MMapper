@@ -28,17 +28,34 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - name: Debug & remove Homebrew Qt on macOS 13
+        if: matrix.os == 'macos-13'
+        shell: bash
+        run: |
+          set -x
+          echo '>>> BEFORE: find qlatin1stringview.h under /usr/local/include'
+          sudo bash -lc "shopt -s nullglob; ls -la /usr/local/include | sed -n 's/^/  /p' || true"
+          sudo find /usr/local/include -maxdepth 2 -name 'qlatin1stringview.h' -print || true
+          echo '>>> brew list qt variants (if any)'
+          brew list --versions qt@5 || true
+          brew list --versions qt || true
+          echo '>>> UNLINK/REMOVE any Homebrew Qt bits'
+          brew unlink qt@5 || true
+          brew unlink qt || true
+          sudo rm -rf /usr/local/include/Qt* /usr/local/lib/cmake/Qt* /usr/local/lib/Qt* || true
+          sudo rm -rf /usr/local/opt/qt* /usr/local/Cellar/qt* || true
+          echo '>>> AFTER: verify header is gone'
+          if sudo test -e /usr/local/include/QtCore/qlatin1stringview.h; then
+            echo 'STILL FOUND: /usr/local/include/QtCore/qlatin1stringview.h';
+            sudo ls -l /usr/local/include/QtCore/qlatin1stringview.h || true;
+          else
+            echo 'Header gone ✅';
+          fi
+
         with:
           fetch-depth: 0
           submodules: true
 
-      - name: Remove Homebrew Qt headers on macOS 13
-        if: matrix.os == 'macos-13'
-        shell: bash
-        run: |
-          brew list --versions qt@5 >/dev/null 2>&1 && brew unlink qt@5 || true
-          brew list --versions qt >/dev/null 2>&1 && brew unlink qt || true
-          sudo rm -rf /usr/local/include/Qt* /usr/local/lib/cmake/Qt* /usr/local/lib/Qt* || true
       - name: Delete beta tag
         shell: bash
         run: |
