@@ -38,6 +38,16 @@ jobs:
           echo 'CPATH=' >> $GITHUB_ENV
           echo 'CPLUS_INCLUDE_PATH=' >> $GITHUB_ENV
       - uses: actions/checkout@v4
+      - name: Remove Homebrew Qt headers on macOS 13
+        if: matrix.os == 'macos-13'
+        run: |
+          set -euxo pipefail
+          brew unlink qt@5 || true
+          brew unlink qt || true
+          sudo rm -rf /usr/local/include/Qt* /usr/local/lib/cmake/Qt* /usr/local/lib/Qt* || true
+          sudo rm -rf /usr/local/opt/qt* /usr/local/Cellar/qt* || true
+          echo 'CPATH=' >> $GITHUB_ENV
+          echo 'CPLUS_INCLUDE_PATH=' >> $GITHUB_ENV
       - name: Debug pre: list Homebrew Qt headers
         if: matrix.os == 'macos-13'
         run: |
