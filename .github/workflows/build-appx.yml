@@ -14,20 +14,10 @@ jobs:
     runs-on: windows-2022
     continue-on-error: false
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0
         submodules: true
-    - name: Delete beta tag
-      shell: bash
-      run: |
-        if git tag | grep -q '^beta$'; then
-          git tag -d beta
-        fi
-    - name: Get Git tag description
-      id: git_info
-      run: |
-        echo "GIT_TAG=$(git describe --tags --always --long)" >> $GITHUB_ENV
     - uses: lukka/get-cmake@latest
     - uses: ilammy/msvc-dev-cmd@v1
 

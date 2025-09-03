@@ -18,21 +18,11 @@ jobs:
       matrix:
         os: [windows-2022, macos-13, macos-14, ubuntu-22.04, ubuntu-22.04-arm]
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0
         submodules: true
-    - name: Delete beta tag
-      shell: bash
-      run: |
-        if git tag | grep -q '^beta$'; then
-          git tag -d beta
-        fi
-    - name: Get Git tag description
-      id: git_info
-      run: |
-        echo "GIT_TAG=$(git describe --tags --always --long)" >> $GITHUB_ENV
-    - if: runner.os == 'Windows'
+    - if: runner.os == 'Windows' || runner.os == 'macOS'
       uses: lukka/get-cmake@latest
     - if: runner.os == 'Windows'
       uses: ilammy/msvc-dev-cmd@v1
@@ -63,7 +53,6 @@ jobs:
     - if: runner.os == 'macOS'
       name: Install Packages for Mac
       run: |
-        brew install cmake ninja
         echo "MMAPPER_CMAKE_EXTRA=-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR" >> $GITHUB_ENV
 
     # Install Dependencies (Windows)
