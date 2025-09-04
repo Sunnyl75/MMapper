@@ -180,8 +180,8 @@ jobs:
       #
       # Package
       #
-    - if: ${{ runner.os != 'macOS' }}
-      name: Package MMapper
+\1- if: ${{ runner.os != 'macOS' }}
+\1  name: Package MMapper
       run: cd build && cpack
     - if: runner.os == 'Linux'
       name: Get Linux package file base name
