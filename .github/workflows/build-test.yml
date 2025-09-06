@@ -71,15 +71,15 @@ jobs:
       #
       # Install Packages (Mac)
       #
-    - if: ${{ false }}
+    - if: runner.os == 'macOS'
       name: Install Qt for Mac
       uses: jurplel/install-qt-action@v4
       with:
         version: 6.5.3
-        arch: clang_64
+
         cache: true
         modules: 'qtwebsockets'
-    - if: ${{ false }}
+    - if: runner.os == 'macOS'
       name: Install Packages for Mac
       run: |
         brew install lcov
