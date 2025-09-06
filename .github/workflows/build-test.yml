@@ -19,6 +19,9 @@ jobs:
         exclude:
         - os: ubuntu-24.04
           compiler: 'msvc'
+          include:
+            - os: macos-13
+              compiler: 'clang'
         - os: macos-latest
           compiler: 'gcc'
         - os: macos-latest
@@ -68,7 +71,7 @@ jobs:
       #
       # Install Packages (Mac)
       #
-    - if: runner.os == 'macOS'
+    - if: ${{ false }}
       name: Install Qt for Mac
       uses: jurplel/install-qt-action@v4
       with:
@@ -76,7 +79,7 @@ jobs:
         arch: clang_64
         cache: true
         modules: 'qtwebsockets'
-    - if: runner.os == 'macOS'
+    - if: ${{ false }}
       name: Install Packages for Mac
       run: |
         brew install lcov
@@ -190,7 +193,7 @@ jobs:
         PACKAGE_FILE=$(ls ${{ github.workspace }}/artifact/*.deb)
         PACKAGE_BASENAME=$(basename "$PACKAGE_FILE" | sed 's/\./-/g')
         echo "PACKAGE_BASENAME=$PACKAGE_BASENAME" >> $GITHUB_OUTPUT
-    - if: runner.os == 'macOS'
+    - if: ${{ false }}
       name: Get Mac package file base name
       id: get_mac_package_name
       run: |
@@ -205,7 +208,7 @@ jobs:
         $packageFile = Get-ChildItem -Path "${{ github.workspace }}/artifact/*.exe" | Select-Object -First 1
         $packageBasename = $packageFile.BaseName -replace '\.', '-'
         "PACKAGE_BASENAME=$packageBasename" >> $env:GITHUB_OUTPUT
-    - if: runner.os == 'macOS'
+    - if: ${{ false }}
       name: Upload Package for Mac
       uses: actions/upload-artifact@v4
       with:
