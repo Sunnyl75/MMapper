@@ -36,6 +36,12 @@ jobs:
           rm -rf dist
           mkdir -p dist
           rsync -a "${{ steps.app.outputs.APP }}/" "dist/$(basename "${{ steps.app.outputs.APP }}")/"
+      - name: Add rpath and ad-hoc sign
+        run: |
+          APP=$(find build -type d -name "*.app" -print -quit)
+          BIN="$APP/Contents/MacOS/$(basename "$APP" .app)"
+          install_name_tool -add_rpath "@executable_path/../Frameworks" "$BIN" 2>/dev/null || true
+          codesign --force --deep --sign - "$APP"
       - name: Create DMG
         run: |
           mkdir -p artifact
