@@ -1,6 +1,10 @@
 name: package-all
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/package-all.yml
+
 jobs:
   mac:
     strategy:
