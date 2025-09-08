@@ -16,13 +16,34 @@ jobs:
           cache: true
       - uses: seanmiddleditch/gha-setup-ninja@v3
       - name: Configure
-        run: cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" -DCPACK_PACKAGE_DIRECTORY="${{ github.workspace }}/artifact"
+        run: cmake -S . -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
       - name: Build
         run: cmake --build build -j
-      - name: Package DMG
-        run: cd build && cpack
+      - name: Locate app bundle
+        id: app
+        run: |
+          APP=$(find build -type d -name "*.app" -print -quit)
+          echo "APP=$APP" >> $GITHUB_OUTPUT
+      - name: Deploy Qt frameworks
+        run: |
+          "$QT_ROOT_DIR/bin/macdeployqt" "${{ steps.app.outputs.APP }}" -verbose=2
+      - name: Strip binary
+        run: |
+          BIN="${{ steps.app.outputs.APP }}/Contents/MacOS/$(basename "${{ steps.app.outputs.APP }}" .app)"
+          [ -f "$BIN" ] && strip -x "$BIN" || true
+      - name: Stage .app
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          rsync -a "${{ steps.app.outputs.APP }}/" "dist/$(basename "${{ steps.app.outputs.APP }}")/"
+      - name: Create DMG
+        run: |
+          mkdir -p artifact
+          hdiutil create -fs HFS+ -volname "MMapper" -srcfolder dist -ov -format UDZO "artifact/MMapper-${{ matrix.os }}.dmg"
+      - name: Show DMG size
+        run: ls -lh artifact/*.dmg
       - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
           name: mmapper-dmg-${{ matrix.os }}
-          path: artifact/**/*.dmg
+          path: artifact/*.dmg
