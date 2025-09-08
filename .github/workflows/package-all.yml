@@ -1,9 +1,10 @@
 name: package-all
 on:
-  workflow_dispatch:
   push:
+    branches: [ master ]
     paths:
-      - .github/workflows/package-all.yml
+      - ".github/workflows/package-all.yml"
+  workflow_dispatch:
 
 jobs:
   mac:
@@ -44,6 +45,7 @@ jobs:
         with:
           name: mmapper-dmg-${{ matrix.os }}
           path: artifact/*.dmg
+
   windows:
     runs-on: windows-2022
     steps:
@@ -78,6 +80,7 @@ jobs:
         with:
           name: mmapper-windows
           path: artifact/mmapper-windows.zip
+
   linux:
     runs-on: ubuntu-22.04
     steps:
