@@ -37,6 +37,29 @@ GroupPage::GroupPage(QWidget *const parent)
         emit sig_groupSettingsChanged();
     });
 
+    connect(ui->showTokensCheckBox, &QCheckBox::stateChanged, this, [this](int checked) {
+        setConfig().groupManager.showTokens = checked;
+        emit sig_groupSettingsChanged();
+    });
+
+    connect(ui->showMapTokensCheckBox, &QCheckBox::stateChanged, this, [this](int checked) {
+        setConfig().groupManager.showMapTokens = checked;
+        emit sig_groupSettingsChanged();
+    });
+
+    connect(ui->showNpcGhostsCheckBox, &QCheckBox::stateChanged, this, [this](int checked) {
+        setConfig().groupManager.showNpcGhosts = checked;
+        emit sig_groupSettingsChanged();
+    });
+
+    connect(ui->tokenIconSizeSpinBox,
+            qOverload<int>(&QSpinBox::valueChanged),
+            this,
+            [this](int value) {
+                setConfig().groupManager.tokenIconSize = value;
+                emit sig_groupSettingsChanged();
+            });
+
     slot_loadConfig();
 }
 
@@ -60,6 +83,11 @@ void GroupPage::slot_loadConfig()
 
     ui->npcSortBottomCheckbox->setChecked(settings.npcSortBottom);
     ui->npcHideCheckbox->setChecked(settings.npcHide);
+
+    ui->showTokensCheckBox->setChecked(settings.showTokens);
+    ui->showMapTokensCheckBox->setChecked(settings.showMapTokens);
+    ui->showNpcGhostsCheckBox->setChecked(settings.showNpcGhosts);
+    ui->tokenIconSizeSpinBox->setValue(settings.tokenIconSize);
 }
 
 void GroupPage::slot_chooseColor()
