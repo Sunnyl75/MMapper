@@ -74,6 +74,7 @@ public:
 };
 
 #define XFOREACH_COLUMNTYPE(X) \
+    X(CHARACTER_TOKEN, character_token, CharacterToken, "Token") \
     X(NAME, name, Name, "Name") \
     X(HP, hp, Hp, "HP") \
     X(MANA, mana, Mana, "Mana") \

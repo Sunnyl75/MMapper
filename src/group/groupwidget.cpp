@@ -614,6 +614,8 @@ QVariant GroupModel::dataForCharacter(const SharedGroupChar &pCharacter,
     switch (role) {
     case Qt::DisplayRole:
         switch (column) {
+        case ColumnTypeEnum::CHARACTER_TOKEN:
+            return QString();
         case ColumnTypeEnum::NAME:
             if (character.getLabel().isEmpty()
                 || character.getName().getStdStringViewUtf8()
@@ -660,6 +662,8 @@ QVariant GroupModel::dataForCharacter(const SharedGroupChar &pCharacter,
 
     case Qt::ToolTipRole: {
         switch (column) {
+        case ColumnTypeEnum::CHARACTER_TOKEN:
+            return QVariant();
         case ColumnTypeEnum::HP:
         case ColumnTypeEnum::MANA:
         case ColumnTypeEnum::MOVES: {
