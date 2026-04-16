@@ -84,6 +84,9 @@ private:
         CharacterTypeEnum type = CharacterTypeEnum::UNDEFINED;
         CharacterAffectFlags affects;
 
+
+        QString m_characterToken;
+
         void reset() { *this = Server{}; }
     };
 
@@ -154,4 +157,8 @@ public:
         m_server.mp = _moves;
         m_server.maxmp = _maxmoves;
     }
+
+    NODISCARD const QString &getCharacterToken() const { return m_server.m_characterToken; }
+    void setCharacterToken(QString token) { m_server.m_characterToken = std::move(token); }
+    QString getDisplayName() const;
 };
