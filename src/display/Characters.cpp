@@ -6,6 +6,7 @@
 #include "../configuration/configuration.h"
 #include "../group/CGroupChar.h"
 #include "../group/mmapper2group.h"
+#include "../group/tokenmanager.h"
 #include "../map/roomid.h"
 #include "../mapdata/mapdata.h"
 #include "../mapdata/roomselection.h"
@@ -26,6 +27,7 @@
 #include <glm/gtx/norm.hpp>
 
 #include <QtCore>
+#include <QOpenGLContext>
 
 static constexpr float CHAR_ARROW_LINE_WIDTH = 2.f;
 static constexpr float PATH_LINE_WIDTH = 0.1f;
@@ -49,7 +51,10 @@ bool CharacterBatch::isVisible(const Coordinate c, float margin) const
     return m_mapScreen.isRoomVisible(c, margin);
 }
 
-void CharacterBatch::drawCharacter(const Coordinate c, const Color color, bool fill)
+void CharacterBatch::drawCharacter(const Coordinate c,
+                                   const Color color,
+                                   bool fill,
+                                   const QString &dispName)
 {
     const Configuration::CanvasSettings &settings = getConfig().canvas;
 
@@ -100,7 +105,7 @@ void CharacterBatch::drawCharacter(const Coordinate c, const Color color, bool f
     }
 
     const bool beacon = visible && !differentLayer && wantBeacons;
-    gl.drawBox(c, fill, beacon, isFar);
+    gl.drawBox(c, fill, beacon, isFar, dispName);
 }
 
 void CharacterBatch::CharFakeGL::drawPathSegment(const glm::vec3 p1,
@@ -235,7 +240,8 @@ void CharacterBatch::CharFakeGL::drawQuadCommon(const glm::vec2 in_a,
 void CharacterBatch::CharFakeGL::drawBox(const Coordinate coord,
                                          bool fill,
                                          bool beacon,
-                                         const bool isFar)
+                                         const bool isFar,
+                                         const QString &dispName)
 {
     const bool dontFillRotatedQuads = true;
     const bool shrinkRotatedQuads = false; // REVISIT: make this a user option?
@@ -295,6 +301,45 @@ void CharacterBatch::CharFakeGL::drawBox(const Coordinate coord,
         addTransformed(c);
         addTransformed(d);
 
+        if (!dispName.isEmpty() && getConfig().groupManager.showMapTokens) {
+            const Color tokenColor{1.f, 1.f, 1.f, 1.f};
+            const auto &mtx = m_stack.top().modelView;
+
+            auto pushVert = [this, &tokenColor, &mtx](const glm::vec2 &roomPos,
+                                                      const glm::vec2 &uv) {
+                const auto tmp = mtx * glm::vec4(roomPos, 0.f, 1.f);
+                m_charTokenQuads.emplace_back(tokenColor, glm::vec3{uv, 0.f}, glm::vec3{tmp / tmp.w});
+            };
+
+            // Scale the room quad around its center to 80%
+            static constexpr float kTokenScale = 0.80f;
+
+            const glm::vec2 center = 0.5f * (a + c);
+
+            const auto scaleAround = [&](const glm::vec2 &p) {
+                return center + (p - center) * kTokenScale;
+            };
+
+            const glm::vec2 sa = scaleAround(a);
+            const glm::vec2 sb = scaleAround(b);
+            const glm::vec2 sc = scaleAround(c);
+            const glm::vec2 sd = scaleAround(d);
+
+            // Keep full UVs so the whole texture shows on the smaller quad
+            pushVert(sa, {0.f, 0.f});
+            pushVert(sb, {1.f, 0.f});
+            pushVert(sc, {1.f, 1.f});
+            pushVert(sd, {0.f, 1.f});
+
+            QString key = TokenManager::overrideFor(dispName);
+            if (key.isEmpty())
+                key = canonicalTokenKey(dispName);
+            else
+                key = canonicalTokenKey(key);
+
+            m_charTokenKeys.emplace_back(key);
+        }
+
         if (beacon) {
             drawQuadCommon(a, b, c, d, QuadOptsEnum::BEACON);
         }
@@ -333,6 +378,49 @@ void CharacterBatch::CharFakeGL::reallyDrawCharacters(OpenGL &gl, const MapCanva
         gl.renderColoredQuads(m_charBeaconQuads, blended_noDepth.withCulling(CullingEnum::FRONT));
     }
 
+    if (!m_charTokenQuads.empty() && !m_charTokenKeys.empty()) {
+        size_t base = 0;
+
+        for (const QString &key : m_charTokenKeys) {
+            if (base + 3 >= m_charTokenQuads.size())
+                break;
+
+            MMTextureId id = tokenManager().textureIdFor(key);
+
+            if (id == INVALID_MM_TEXTURE_ID) {
+                if (!QOpenGLContext::currentContext()) {
+                    base += 4;
+                    continue;
+                }
+
+                const QPixmap px = tokenManager().getToken(key);
+
+                if (!px.isNull()) {
+                    id = tokenManager().uploadNow(key, px);
+                }
+            }
+
+            if (id == INVALID_MM_TEXTURE_ID) {
+                base += 4;
+                continue;
+            }
+
+            SharedMMTexture tex = tokenManager().textureById(id);
+            if (!tex) {
+                base += 4;
+                continue;
+            }
+
+            gl.setTextureLookup(id, tex);
+
+            gl.renderColoredTexturedQuads(
+                View<ColoredTexVert>{m_charTokenQuads.data() + base, 4},
+                blended_noDepth.withTexture0(id));
+
+            base += 4;
+        }
+    }
+
     if (!m_charRoomQuads.empty()) {
         gl.renderColoredTexturedQuads(m_charRoomQuads,
                                       blended_noDepth.withTexture0(
@@ -357,6 +445,9 @@ void CharacterBatch::CharFakeGL::reallyDrawCharacters(OpenGL &gl, const MapCanva
         gl.renderFont3d(textures.char_arrows, m_screenSpaceArrows);
         m_screenSpaceArrows.clear();
     }
+
+    m_charTokenQuads.clear();
+    m_charTokenKeys.clear();
 }
 
 void CharacterBatch::CharFakeGL::reallyDrawPaths(OpenGL &gl)
@@ -471,8 +562,16 @@ void MapCanvas::paintCharacters()
 
     CharacterBatch characterBatch{m_mapScreen, getCurrentLayer(), getTotalScaleFactor()};
 
+    const CGroupChar *playerChar = nullptr;
+    for (const auto &pCharacter : m_groupManager.selectAll()) {
+        if (pCharacter->isYou()) {
+            playerChar = pCharacter.get();
+            break;
+        }
+    }
+
     // IIFE to abuse return to avoid duplicate else branches
-    std::invoke([this, &characterBatch]() -> void {
+    std::invoke([this, &characterBatch, playerChar]() -> void {
         if (const std::optional<RoomId> opt_pos = m_data.getCurrentRoomId()) {
             const auto &id = opt_pos.value();
             if (const auto room = m_data.findRoomHandle(id)) {
@@ -484,8 +583,10 @@ void MapCanvas::paintCharacters()
 
                 // paint char current position
                 const Color color{getConfig().groupManager.color};
-                characterBatch.drawCharacter(pos, color);
-
+                characterBatch.drawCharacter(pos,
+                                             color,
+                                             true,
+                                             playerChar ? playerChar->getDisplayName() : QString());
                 // paint prespam
                 const auto prespam = m_data.getPath(id, m_prespammedPath.getQueue());
                 characterBatch.drawPreSpammedPath(pos, prespam, color);
@@ -510,6 +611,17 @@ void MapCanvas::drawGroupCharacters(CharacterBatch &batch, ServerRoomId yourServ
 
     RoomIdSet drawnRoomIds;
     const Map &map = m_data.getCurrentMap();
+
+    RoomId playerRoomId = INVALID_ROOMID;
+    for (const auto &p : m_groupManager.selectAll()) {
+        if (p->isYou()) {
+            if (const auto r = map.findRoomHandle(p->getServerId())) {
+                playerRoomId = r.getId();
+            }
+            break;
+        }
+    }
+
     for (const auto &pCharacter : m_groupManager.selectAll()) {
         // Omit player so that they know group members are below them
         if (pCharacter->isYou()) {
@@ -538,7 +650,10 @@ void MapCanvas::drawGroupCharacters(CharacterBatch &batch, ServerRoomId yourServ
         const auto color = Color{character.getColor()};
         const bool fill = !drawnRoomIds.contains(id);
 
-        batch.drawCharacter(pos, color, fill);
+        const bool showToken = (id != playerRoomId);
+        const QString tokenKey = showToken ? character.getDisplayName() : QString();
+
+        batch.drawCharacter(pos, color, fill, tokenKey);
 
         if (srvId != INVALID_SERVER_ROOMID && srvId != yourServerId) {
             QString name = character.getLabel().isEmpty() ? character.getName().toQString()
