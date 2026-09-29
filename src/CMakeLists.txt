@@ -72,6 +72,7 @@ set(mmapper_SRCS
     display/Connections.h
     display/Filenames.cpp
     display/Filenames.h
+    display/GhostRegistry.h
     display/IMapBatchesFinisher.cpp
     display/IMapBatchesFinisher.h
     display/InfomarkSelection.cpp
@@ -252,6 +253,8 @@ set(mmapper_SRCS
     group/ColorGenerator.h
     group/GroupManagerApi.cpp
     group/GroupManagerApi.h
+    group/tokenmanager.cpp
+    group/tokenmanager.h
     group/GroupModel.cpp
     group/GroupModel.h
     group/groupwidget.cpp

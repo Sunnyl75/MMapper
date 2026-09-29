@@ -19,6 +19,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <QColor>
+#include <QString>
 
 class MapScreen;
 class OpenGL;

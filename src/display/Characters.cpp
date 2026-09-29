@@ -13,21 +13,26 @@
 #include "../opengl/LineRendering.h"
 #include "../opengl/OpenGL.h"
 #include "../opengl/OpenGLTypes.h"
+#include "GhostRegistry.h"
 #include "MapCanvasData.h"
 #include "Textures.h"
 #include "mapcanvas.h"
 #include "prespammedpath.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 #include <glm/glm.hpp>
 #include <glm/gtx/norm.hpp>
 
-#include <QtCore>
 #include <QOpenGLContext>
+#include <QtCore>
+
+std::unordered_map<ServerRoomId, GhostInfo> g_ghosts;
 
 static constexpr float CHAR_ARROW_LINE_WIDTH = 2.f;
 static constexpr float PATH_LINE_WIDTH = 0.1f;
@@ -237,11 +242,8 @@ void CharacterBatch::CharFakeGL::drawQuadCommon(const glm::vec2 in_a,
     }
 }
 
-void CharacterBatch::CharFakeGL::drawBox(const Coordinate coord,
-                                         bool fill,
-                                         bool beacon,
-                                         const bool isFar,
-                                         const QString &dispName)
+void CharacterBatch::CharFakeGL::drawBox(
+    const Coordinate coord, bool fill, bool beacon, const bool isFar, const QString &dispName)
 {
     const bool dontFillRotatedQuads = true;
     const bool shrinkRotatedQuads = false; // REVISIT: make this a user option?
@@ -301,14 +303,20 @@ void CharacterBatch::CharFakeGL::drawBox(const Coordinate coord,
         addTransformed(c);
         addTransformed(d);
 
-        if (!dispName.isEmpty() && getConfig().groupManager.showMapTokens) {
-            const Color tokenColor{1.f, 1.f, 1.f, 1.f};
+        if (!dispName.isEmpty() && getConfig().groupManager.showMapTokens && numAlreadyInRoom == 0) {
+            bool isGhost = dispName.startsWith("__ghost__");
+
+            float alpha = isGhost ? 0.5f : 1.0f;
+
+            const Color tokenColor{1.f, 1.f, 1.f, alpha};
             const auto &mtx = m_stack.top().modelView;
 
             auto pushVert = [this, &tokenColor, &mtx](const glm::vec2 &roomPos,
                                                       const glm::vec2 &uv) {
                 const auto tmp = mtx * glm::vec4(roomPos, 0.f, 1.f);
-                m_charTokenQuads.emplace_back(tokenColor, glm::vec3{uv, 0.f}, glm::vec3{tmp / tmp.w});
+                m_charTokenQuads.emplace_back(tokenColor,
+                                              glm::vec3{uv, 0.f},
+                                              glm::vec3{tmp / tmp.w});
             };
 
             // Scale the room quad around its center to 80%
@@ -331,9 +339,13 @@ void CharacterBatch::CharFakeGL::drawBox(const Coordinate coord,
             pushVert(sc, {1.f, 1.f});
             pushVert(sd, {0.f, 1.f});
 
-            QString key = TokenManager::overrideFor(dispName);
+            QString cleanName = dispName;
+            if (cleanName.startsWith("__ghost__"))
+                cleanName = cleanName.mid(QString("__ghost__").length());
+
+            QString key = TokenManager::overrideFor(cleanName);
             if (key.isEmpty())
-                key = canonicalTokenKey(dispName);
+                key = canonicalTokenKey(cleanName);
             else
                 key = canonicalTokenKey(key);
 
@@ -413,9 +425,8 @@ void CharacterBatch::CharFakeGL::reallyDrawCharacters(OpenGL &gl, const MapCanva
 
             gl.setTextureLookup(id, tex);
 
-            gl.renderColoredTexturedQuads(
-                View<ColoredTexVert>{m_charTokenQuads.data() + base, 4},
-                blended_noDepth.withTexture0(id));
+            gl.renderColoredTexturedQuads(View<ColoredTexVert>{m_charTokenQuads.data() + base, 4},
+                                          blended_noDepth.withTexture0(id));
 
             base += 4;
         }
@@ -664,5 +675,75 @@ void MapCanvas::drawGroupCharacters(CharacterBatch &batch, ServerRoomId yourServ
         }
 
         drawnRoomIds.insert(id);
+    }
+
+    /* ---------- draw (and purge) ghost tokens ------------------------------ */
+    if (!getConfig().groupManager.showNpcGhosts) {
+        g_ghosts.clear();
+    } else {
+        std::unordered_map<RoomId, int> ghostCounts;
+
+        // Stable iteration
+        std::vector<GhostInfo *> orderedGhosts;
+        orderedGhosts.reserve(g_ghosts.size());
+
+        for (auto &pair : g_ghosts) {
+            orderedGhosts.push_back(&pair.second);
+        }
+
+        std::sort(orderedGhosts.begin(),
+                  orderedGhosts.end(),
+                  [](const GhostInfo *a, const GhostInfo *b) { return a->tokenKey < b->tokenKey; });
+
+        for (GhostInfo *ghost : orderedGhosts) {
+            // Remove ghost if NPC is back in group
+            bool npcStillExists = false;
+            for (const auto &p : m_groupManager.selectAll()) {
+                if (!p->isYou() && p->getServerId() == ghost->serverId) {
+                    npcStillExists = true;
+                    break;
+                }
+            }
+
+            if (npcStillExists) {
+                for (auto it = g_ghosts.begin(); it != g_ghosts.end(); ++it) {
+                    if (&it->second == ghost) {
+                        g_ghosts.erase(it);
+                        break;
+                    }
+                }
+                continue;
+            }
+
+            // Resolve room
+            RoomId roomId = ghost->originRoomId;
+            if (roomId == INVALID_ROOMID) {
+                if (const auto r = map.findRoomHandle(ghost->serverId)) {
+                    roomId = r.getId();
+                    ghost->originRoomId = roomId;
+                }
+            }
+
+            const auto h = map.findRoomHandle(roomId);
+            if (!h) {
+                continue;
+            }
+
+            const auto &pos = h.getPosition();
+            const Color col{1.f, 1.f, 1.f, 1.f};
+
+            QString tokenKey = TokenManager::overrideFor(ghost->tokenKey);
+            if (tokenKey.isEmpty())
+                tokenKey = canonicalTokenKey(ghost->tokenKey);
+            else
+                tokenKey = canonicalTokenKey(tokenKey);
+
+            int &count = ghostCounts[roomId];
+
+            // First ghost = full image, others = rotated selector
+            batch.drawCharacter(pos, col, count == 0, "__ghost__" + tokenKey);
+
+            count++;
+        }
     }
 }

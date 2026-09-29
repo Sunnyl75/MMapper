@@ -195,6 +195,10 @@ MainWindow::MainWindow()
         addDockWidget(Qt::TopDockWidgetArea, dock);
         dock->setWidget(w);
         connect(w, &GroupWidget::sig_center, m_mapWindow, &MapWindow::slot_centerOnWorldPos);
+        auto *const canvas = getCanvas();
+        connect(w, &GroupWidget::sig_characterUpdated, canvas, [canvas](SharedGroupChar) {
+            canvas->slot_requestUpdate();
+        });
 
         m_groupWidget = w;
         m_dockDialogGroup = dock;

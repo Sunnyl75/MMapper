@@ -15,6 +15,7 @@
 class QObject;
 class QPainter;
 class QRect;
+class TokenManager;
 
 class NODISCARD_QOBJECT GroupProxyModel final : public QSortFilterProxyModel
 {
@@ -55,6 +56,7 @@ public:
 public:
     void paint(QPainter *pPainter, const QRect &rect);
     NODISCARD int getWidth() const { return static_cast<int>(m_count) * m_height; }
+    NODISCARD int getWidthForHeight(int height) const { return static_cast<int>(m_count) * height; }
 };
 Q_DECLARE_METATYPE(GroupStateData)
 
@@ -122,6 +124,7 @@ private:
     GroupVector m_characters;
     bool m_mapLoaded = false;
     bool m_anyMana = false;
+    TokenManager *m_tokenManager = nullptr;
 
 public:
     explicit GroupModel(QObject *parent = nullptr);
@@ -137,6 +140,7 @@ public:
     void removeCharacterById(GroupId charId);
     void updateCharacter(const SharedGroupChar &updatedCharacter);
     void resetModel();
+    void setTokenManager(TokenManager *manager) { m_tokenManager = manager; }
 
 public:
     // True when at least one character has (or has had) mana; recomputed on

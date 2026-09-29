@@ -11,6 +11,7 @@
 #include "../map/roomid.h"
 #include "CGroupChar.h"
 #include "enums.h"
+#include "tokenmanager.h"
 
 #include <algorithm>
 #include <cassert>
@@ -19,6 +20,7 @@
 #include <vector>
 
 #include <QDataStream>
+#include <QIcon>
 #include <QMimeData>
 #include <QString>
 #include <QStringList>
@@ -407,6 +409,12 @@ QVariant GroupModel::dataForCharacter(const SharedGroupChar &pCharacter,
 
     // Map column to data
     switch (role) {
+    case Qt::DecorationRole:
+        if (column == ColumnTypeEnum::CHARACTER_TOKEN && m_tokenManager) {
+            return QIcon(m_tokenManager->getToken(character.getDisplayName()));
+        }
+        break;
+
     case Qt::DisplayRole:
         switch (column) {
         case ColumnTypeEnum::CHARACTER_TOKEN:
