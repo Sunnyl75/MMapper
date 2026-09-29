@@ -126,6 +126,11 @@ public:
     void setId(GroupId id);
     NODISCARD const CharacterName &getName() const { return m_server.name; }
     void setName(CharacterName name) { m_server.name = std::move(name); }
+    /* ---------- temporary helper until GMCP flags real mounts ---------- */
+    inline bool isMount() const
+    {
+        return isNpc(); // treat every NPC as a “mount” for now
+    }
     NODISCARD const CharacterLabel &getLabel() const { return m_server.label; }
     void setLabel(CharacterLabel label) { m_server.label = std::move(label); }
     void setColor(QColor col) { m_internal.color = std::move(col); }

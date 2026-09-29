@@ -19,6 +19,7 @@ class Mmapper2Group;
 class QObject;
 class QTableView;
 class QTimer;
+class TokenManager;
 
 class NODISCARD_QOBJECT GroupProxyModel final : public QSortFilterProxyModel
 {
@@ -55,6 +56,7 @@ public:
 public:
     void paint(QPainter *pPainter, const QRect &rect);
     NODISCARD int getWidth() const { return static_cast<int>(m_count) * m_height; }
+    NODISCARD int getWidthForHeight(int height) const { return static_cast<int>(m_count) * height; }
 };
 Q_DECLARE_METATYPE(GroupStateData)
 
@@ -102,6 +104,7 @@ class NODISCARD_QOBJECT GroupModel final : public QAbstractTableModel
 private:
     GroupVector m_characters;
     bool m_mapLoaded = false;
+    TokenManager *m_tokenManager = nullptr;
 
 public:
     explicit GroupModel(QObject *parent = nullptr);
@@ -116,6 +119,7 @@ public:
     void insertCharacter(const SharedGroupChar &newCharacter);
     void removeCharacterById(GroupId charId);
     void updateCharacter(const SharedGroupChar &updatedCharacter);
+    void setTokenManager(TokenManager *manager) { m_tokenManager = manager; }
     void resetModel();
 
 private:
@@ -158,10 +162,16 @@ private:
     void updateColumnVisibility();
     void updatePulseTimer();
 
+    void showContextMenu(const QModelIndex &proxyIndex);
+    void buildAndExecMenu();
+
 private:
     QAction *m_center = nullptr;
     QAction *m_recolor = nullptr;
     SharedGroupChar selectedCharacter;
+
+    QAction *m_setIcon = nullptr;
+    QAction *m_useDefaultIcon = nullptr;
 
 public:
     explicit GroupWidget(Mmapper2Group *group, MapData *md, QWidget *parent);
@@ -173,6 +183,7 @@ protected:
 signals:
     void sig_kickCharacter(const QString &);
     void sig_center(glm::vec2);
+    void sig_characterUpdated(SharedGroupChar character);
 
 public slots:
     void slot_mapUnloaded() { m_model.setMapLoaded(false); }
@@ -183,4 +194,5 @@ private slots:
     void slot_onCharacterRemoved(GroupId characterId);
     void slot_onCharacterUpdated(SharedGroupChar character);
     void slot_onGroupReset(const GroupVector &newCharacterList);
+    void slot_updateLabels();
 };

@@ -13,6 +13,7 @@
 #include "../opengl/LineRendering.h"
 #include "../opengl/OpenGL.h"
 #include "../opengl/OpenGLTypes.h"
+#include "GhostRegistry.h"
 #include "MapCanvasData.h"
 #include "Textures.h"
 #include "mapcanvas.h"
@@ -27,6 +28,8 @@
 #include <glm/gtx/norm.hpp>
 
 #include <QtCore>
+
+std::unordered_map<ServerRoomId, GhostInfo> g_ghosts;
 
 static constexpr float CHAR_ARROW_LINE_WIDTH = 2.f;
 static constexpr float PATH_LINE_WIDTH = 0.1f;
@@ -294,8 +297,12 @@ void CharacterBatch::CharFakeGL::drawBox(const Coordinate &coord,
         addTransformed(c);
         addTransformed(d);
 
-        if (!dispName.isEmpty() && getConfig().groupManager.showMapTokens) {
-            const Color tokenColor{1.f, 1.f, 1.f, 1.f};
+        if (!dispName.isEmpty() && getConfig().groupManager.showMapTokens && numAlreadyInRoom == 0) {
+            bool isGhost = dispName.startsWith("__ghost__");
+
+            float alpha = isGhost ? 0.5f : 1.0f;
+
+            const Color tokenColor{1.f, 1.f, 1.f, alpha};
             const auto &mtx = m_stack.top().modelView;
 
             auto pushVert = [this, &tokenColor, &mtx](const glm::vec2 &roomPos,
@@ -324,9 +331,13 @@ void CharacterBatch::CharFakeGL::drawBox(const Coordinate &coord,
             pushVert(sc, {1.f, 1.f});
             pushVert(sd, {0.f, 1.f});
 
-            QString key = TokenManager::overrideFor(dispName);
+            QString cleanName = dispName;
+            if (cleanName.startsWith("__ghost__"))
+                cleanName = cleanName.mid(QString("__ghost__").length());
+
+            QString key = TokenManager::overrideFor(cleanName);
             if (key.isEmpty())
-                key = canonicalTokenKey(dispName);
+                key = canonicalTokenKey(cleanName);
             else
                 key = canonicalTokenKey(key);
 
@@ -463,11 +474,11 @@ void CharacterBatch::CharFakeGL::addScreenSpaceArrow(const glm::vec3 &pos,
                                                      const bool fill)
 {
     std::array<glm::vec2, 4> texCoords{
-        glm::vec2{0, 0},
-        glm::vec2{1, 0},
-        glm::vec2{1, 1},
-        glm::vec2{0, 1},
-    };
+                                       glm::vec2{0, 0},
+                                       glm::vec2{1, 0},
+                                       glm::vec2{1, 1},
+                                       glm::vec2{0, 1},
+                                       };
 
     const float scale = MapScreen::DEFAULT_MARGIN_PIXELS;
     const float radians = glm::radians(degrees);
@@ -572,6 +583,10 @@ void MapCanvas::paintCharacters()
             const auto &id = opt_pos.value();
             if (const auto room = m_data.findRoomHandle(id)) {
                 const auto &pos = room.getPosition();
+                // if (!getConfig().groupManager.showNpcGhosts) {
+                //  g_ghosts.clear();
+                // }
+
                 // draw the characters before the current position
                 characterBatch.incrementCount(pos);
                 drawGroupCharacters(characterBatch, room.getServerId());
@@ -607,6 +622,15 @@ void MapCanvas::drawGroupCharacters(CharacterBatch &batch, ServerRoomId yourServ
 
     RoomIdSet drawnRoomIds;
     const Map &map = m_data.getCurrentMap();
+
+    ServerRoomId playerRoomSid = INVALID_SERVER_ROOMID;
+
+    for (const auto &p : m_groupManager.selectAll()) {
+        if (p->isYou()) {
+            playerRoomSid = p->getServerId();
+            break;
+        }
+    }
 
     RoomId playerRoomId = INVALID_ROOMID;
     for (const auto &p : m_groupManager.selectAll()) {
@@ -660,5 +684,82 @@ void MapCanvas::drawGroupCharacters(CharacterBatch &batch, ServerRoomId yourServ
         }
 
         drawnRoomIds.insert(id);
+    }
+
+    /* ---------- draw (and purge) ghost tokens ------------------------------ */
+    if (!getConfig().groupManager.showNpcGhosts) {
+        g_ghosts.clear();
+    } else {
+
+        std::unordered_map<RoomId, int> ghostCounts;
+
+        // Stable iteration
+        std::vector<GhostInfo*> orderedGhosts;
+        orderedGhosts.reserve(g_ghosts.size());
+
+        for (auto &pair : g_ghosts) {
+            orderedGhosts.push_back(&pair.second);
+        }
+
+        std::sort(orderedGhosts.begin(), orderedGhosts.end(),
+                  [](const GhostInfo *a, const GhostInfo *b) {
+                      return a->tokenKey < b->tokenKey;
+                  });
+
+        for (GhostInfo *ghost : orderedGhosts) {
+            ghost->framesAlive++;
+
+            // Remove ghost if NPC is back in group
+            bool npcStillExists = false;
+            for (const auto &p : m_groupManager.selectAll()) {
+                if (!p->isYou() && p->getServerId() == ghost->serverId) {
+                    npcStillExists = true;
+                    break;
+                }
+            }
+
+            if (npcStillExists) {
+                for (auto it = g_ghosts.begin(); it != g_ghosts.end(); ++it) {
+                    if (&it->second == ghost) {
+                        g_ghosts.erase(it);
+                        break;
+                    }
+                }
+                continue;
+            }
+
+            // Resolve room
+            RoomId roomId = ghost->originRoomId;
+            if (roomId == INVALID_ROOMID) {
+                if (const auto r = map.findRoomHandle(ghost->serverId)) {
+                    roomId = r.getId();
+                    ghost->originRoomId = roomId;
+                }
+            }
+
+            const auto h = map.findRoomHandle(roomId);
+            if (!h) {
+                continue;
+            }
+
+            const auto &pos = h.getPosition();
+            const Color col{1.f, 1.f, 1.f, 1.f};
+
+            QString tokenKey = TokenManager::overrideFor(ghost->tokenKey);
+            if (tokenKey.isEmpty())
+                tokenKey = canonicalTokenKey(ghost->tokenKey);
+            else
+                tokenKey = canonicalTokenKey(tokenKey);
+
+            int &count = ghostCounts[roomId];
+
+            // First ghost = full image, others = rotated selector
+            batch.drawCharacter(pos,
+                                col,
+                                count == 0,
+                                "__ghost__" + tokenKey);
+
+            count++;
+        }
     }
 }

@@ -119,27 +119,50 @@
         </property>
        </widget>
       </item>
-      <item row="7" column="2">
-       <widget class="QSpinBox" name="tokenIconSizeSpinBox">
-        <property name="minimum">
-         <number>16</number>
-        </property>
-        <property name="maximum">
-         <number>128</number>
-        </property>
-        <property name="singleStep">
-         <number>16</number>
-        </property>
-        <property name="value">
-         <number>32</number>
-        </property>
-       </widget>
-      </item>
       <item row="7" column="1">
        <widget class="QLabel" name="label_6">
         <property name="text">
          <string>Token size</string>
         </property>
+       </widget>
+      </item>
+      <item row="7" column="2">
+       <widget class="QComboBox" name="tokenSizeComboBox">
+        <property name="maxCount">
+         <number>64</number>
+        </property>
+        <property name="insertPolicy">
+         <enum>QComboBox::NoInsert</enum>
+        </property>
+        <property name="minimumContentsLength">
+         <number>16</number>
+        </property>
+        <property name="iconSize">
+         <size>
+          <width>32</width>
+          <height>32</height>
+         </size>
+        </property>
+        <item>
+         <property name="text">
+          <string>16 px</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>32 px</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>48 px</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>64 px</string>
+         </property>
+        </item>
        </widget>
       </item>
      </layout>

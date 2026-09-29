@@ -6,6 +6,7 @@
 #include "mmapper2group.h"
 
 #include "../configuration/configuration.h"
+#include "../display/GhostRegistry.h"
 #include "../global/CaseUtils.h"
 #include "../global/Charset.h"
 #include "../global/JsonArray.h"
@@ -24,6 +25,7 @@
 #include <QVariantMap>
 
 static const bool verbose_debugging = false;
+static unsigned int ghostCounter = 1;
 
 Mmapper2Group::Mmapper2Group(QObject *const parent)
     : QObject{parent}
@@ -250,6 +252,34 @@ void Mmapper2Group::removeChar(const GroupId id)
             m_colorGenerator.releaseColor(character.getColor());
         }
         qDebug() << "removing" << id.asUint32() << character.getName().toQString();
+
+        // --- CREATE GHOST BEFORE REMOVAL ---
+
+        const ServerRoomId srvId = character.getServerId();
+
+        if (srvId != INVALID_SERVER_ROOMID) {
+            GhostInfo ghost;
+            ghost.serverId = srvId;
+
+            // ❗ Do NOT try to resolve the room here
+            ghost.originRoomId = INVALID_ROOMID;
+
+            ghost.tokenKey = character.getDisplayName();
+            ghost.framesAlive = 0;
+
+            // Remove any existing ghost for this NPC first
+            for (auto it = g_ghosts.begin(); it != g_ghosts.end(); ) {
+                if (it->second.tokenKey == ghost.tokenKey) {
+                    it = g_ghosts.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+
+            // Now insert fresh ghost
+            g_ghosts.emplace(ServerRoomId(ghostCounter++), ghost);
+        }
+
         return true;
     });
     if (erased) {

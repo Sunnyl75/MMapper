@@ -3,9 +3,11 @@
 // Author: Nils Schimmelmann <nschimme@gmail.com> (Jahara)
 
 #include "groupwidget.h"
+#include "tokenmanager.h"
 
 #include "../configuration/configuration.h"
 #include "../display/Filenames.h"
+#include "../display/GhostRegistry.h"
 #include "../global/Timer.h"
 #include "../map/roomid.h"
 #include "../mapdata/mapdata.h"
@@ -33,8 +35,14 @@
 #include <QTableView>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <QDir>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QMessageBox>
 
 static constexpr const char *GROUP_MIME_TYPE = "application/vnd.mm_groupchar.row";
+
+extern const QString kForceFallback;
 
 namespace { // anonymous
 
@@ -156,6 +164,7 @@ GroupStateData::GroupStateData(const QColor &color,
 void GroupStateData::paint(QPainter *const pPainter, const QRect &rect)
 {
     auto &painter = deref(pPainter);
+    painter.fillRect(rect, m_color);
 
     painter.save();
     painter.translate(rect.x(), rect.y());
@@ -220,6 +229,24 @@ void GroupDelegate::paint(QPainter *const pPainter,
     const QRect rect = option.rect;
     const QColor charColor = character->getColor();
 
+    if (column == ColumnTypeEnum::CHARACTER_TOKEN) {
+        painter.fillRect(rect, charColor);
+
+        if (option.state & QStyle::State_Selected) {
+            QColor selectColor = option.palette.color(QPalette::Highlight);
+            selectColor.setAlpha(60);
+            painter.fillRect(rect, selectColor);
+        }
+
+        QStyleOptionViewItem opt = option;
+        opt.state &= ~QStyle::State(QStyle::State_HasFocus);
+        opt.state &= ~QStyle::State(QStyle::State_Selected);
+        opt.backgroundBrush = QBrush(Qt::transparent);
+
+        QStyledItemDelegate::paint(pPainter, opt, index);
+        return;
+    }
+
     // Layer 0: Background
     painter.fillRect(rect, charColor);
 
@@ -232,7 +259,14 @@ void GroupDelegate::paint(QPainter *const pPainter,
 
     if (index.data().canConvert<GroupStateData>()) {
         GroupStateData stateData = qvariant_cast<GroupStateData>(index.data());
-        stateData.paint(pPainter, option.rect);
+
+        const int contentWidth = stateData.getWidthForHeight(rect.height());
+        const QRect centeredRect(rect.x() + (rect.width() - contentWidth) / 2,
+                                 rect.y(),
+                                 contentWidth,
+                                 rect.height());
+
+        stateData.paint(pPainter, centeredRect);
         return;
     }
 
@@ -289,12 +323,13 @@ void GroupDelegate::paint(QPainter *const pPainter,
         }
 
         // Layer 2: The Bar (80% height, rounded 4px)
-        const int barHeight = static_cast<int>(static_cast<double>(rect.height()) * 0.8);
-        const int barY = rect.y() + (rect.height() - barHeight) / 2;
+        const QRect paddedRect = rect.adjusted(6, 0, -6, 0);
+        const int barHeight = static_cast<int>(static_cast<double>(paddedRect.height()) * 0.8);
+        const int barY = paddedRect.y() + (paddedRect.height() - barHeight) / 2;
         const double pct = std::clamp(max > 0 ? static_cast<double>(cur) / max : 0.0, 0.0, 1.0);
-        const int barWidth = static_cast<int>(static_cast<double>(std::max(0, rect.width() - 2))
+        const int barWidth = static_cast<int>(static_cast<double>(std::max(0, paddedRect.width() - 2))
                                               * pct);
-        const QRect barRect(rect.x() + 1, barY, std::max(0, rect.width() - 2), barHeight);
+        const QRect barRect(paddedRect.x() + 1, barY, std::max(0, paddedRect.width() - 2), barHeight);
 
         painter.save();
         painter.setRenderHint(QPainter::Antialiasing);
@@ -324,8 +359,7 @@ void GroupDelegate::paint(QPainter *const pPainter,
             painter.setBrush(barColor);
             painter.setPen(Qt::NoPen);
             // Clip to progress width to keep the rounded corners of the container
-            painter.setClipRect(rect.x() + 1, barY, barWidth, barHeight, Qt::IntersectClip);
-            painter.drawRoundedRect(barRect, 4.0, 4.0);
+            painter.setClipRect(paddedRect.x() + 1, barY, barWidth, barHeight, Qt::IntersectClip);            painter.drawRoundedRect(barRect, 4.0, 4.0);
         }
         painter.restore();
 
@@ -339,7 +373,7 @@ void GroupDelegate::paint(QPainter *const pPainter,
         // Use text color appropriate for QPalette::Window (the bar container background)
         painter.setPen(mmqt::textColor(option.palette.color(QPalette::Window)));
 
-        painter.drawText(rect,
+        painter.drawText(paddedRect,
                          static_cast<int>(Qt::AlignCenter),
                          index.data(Qt::DisplayRole).toString());
         painter.restore();
@@ -359,8 +393,12 @@ QSize GroupDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelIn
     if (index.data().canConvert<GroupStateData>()) {
         GroupStateData stateData = qvariant_cast<GroupStateData>(index.data());
         QSize size = QStyledItemDelegate::sizeHint(option, index);
+
+        const int rowHeight =
+            std::max(getConfig().groupManager.tokenIconSize, option.fontMetrics.height() + 4);
+
         const int padding = size.width() / 2;
-        const int content = stateData.getWidth();
+        const int content = stateData.getWidthForHeight(rowHeight);
         size.setWidth(padding + content);
         return size;
     }
@@ -392,6 +430,14 @@ void GroupModel::setCharacters(const GroupVector &newGameChars)
     newGameCharIds.reserve(newGameChars.size());
     for (const auto &pGameChar : newGameChars) {
         const auto &gameChar = deref(pGameChar);
+        if (getConfig().groupManager.showNpcGhosts) {
+            auto itGhost = g_ghosts.find(gameChar.getServerId());
+            if (itGhost != g_ghosts.end()) {
+                if (itGhost->second.framesAlive > 5) {   // ← KEY CHANGE
+                    g_ghosts.erase(itGhost);
+                }
+            }
+        }
         newGameCharIds.insert(gameChar.getId());
     }
 
@@ -513,6 +559,8 @@ void GroupModel::removeCharacterById(const GroupId charId)
         return;
     }
 
+    SharedGroupChar &c = m_characters[static_cast<size_t>(index)];
+
     beginRemoveRows(QModelIndex(), index, index);
     m_characters.erase(m_characters.begin() + index);
     endRemoveRows();
@@ -612,10 +660,19 @@ QVariant GroupModel::dataForCharacter(const SharedGroupChar &pCharacter,
 
     // Map column to data
     switch (role) {
+
+    case Qt::DecorationRole:
+        if (column == ColumnTypeEnum::CHARACTER_TOKEN) {
+            return m_tokenManager ? QIcon(m_tokenManager->getToken(character.getDisplayName()))
+                                  : QVariant();
+        }
+        break;
+
     case Qt::DisplayRole:
         switch (column) {
         case ColumnTypeEnum::CHARACTER_TOKEN:
-            return QString();
+            return m_tokenManager ? QIcon(m_tokenManager->getToken(character.getDisplayName()))
+                                  : QVariant();
         case ColumnTypeEnum::NAME:
             if (character.getLabel().isEmpty()
                 || character.getName().getStdStringViewUtf8()
@@ -841,6 +898,8 @@ GroupWidget::GroupWidget(Mmapper2Group *const group, MapData *const md, QWidget 
         m_model.setCharacters({});
     }
 
+    m_model.setTokenManager(&tokenManager());
+
     auto *layout = new QVBoxLayout(this);
     layout->setAlignment(Qt::AlignTop);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -850,12 +909,33 @@ GroupWidget::GroupWidget(Mmapper2Group *const group, MapData *const md, QWidget 
     m_table->setSelectionMode(QAbstractItemView::SingleSelection);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
 
-    m_table->horizontalHeader()->setStretchLastSection(true);
-    m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
-
+    m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     m_proxyModel = new GroupProxyModel(this);
     m_proxyModel->setSourceModel(&m_model);
     m_table->setModel(m_proxyModel);
+
+    auto *header = m_table->horizontalHeader();
+
+    header->setSectionResizeMode(static_cast<int>(ColumnTypeEnum::CHARACTER_TOKEN),
+                                 QHeaderView::ResizeToContents);
+
+    header->setSectionResizeMode(static_cast<int>(ColumnTypeEnum::HP),
+                                 QHeaderView::ResizeToContents);
+
+    header->setSectionResizeMode(static_cast<int>(ColumnTypeEnum::MANA),
+                                 QHeaderView::ResizeToContents);
+
+    header->setSectionResizeMode(static_cast<int>(ColumnTypeEnum::MOVES),
+                                 QHeaderView::ResizeToContents);
+
+    header->setSectionResizeMode(static_cast<int>(ColumnTypeEnum::STATE),
+                                 QHeaderView::ResizeToContents);
+
+    header->setSectionResizeMode(static_cast<int>(ColumnTypeEnum::NAME),
+                                 QHeaderView::ResizeToContents);
+
+    header->setSectionResizeMode(static_cast<int>(ColumnTypeEnum::ROOM_NAME),
+                                 QHeaderView::Stretch);
 
     m_table->setDragEnabled(true);
     m_table->setAcceptDrops(true);
@@ -868,10 +948,6 @@ GroupWidget::GroupWidget(Mmapper2Group *const group, MapData *const md, QWidget 
 
     m_pulseTimer = new QTimer(this);
     connect(m_pulseTimer, &QTimer::timeout, m_table->viewport(), QOverload<>::of(&QWidget::update));
-
-    // Minimize row height
-    m_table->verticalHeader()->setDefaultSectionSize(
-        m_table->verticalHeader()->minimumSectionSize());
 
     m_center = new QAction(QIcon(":/icons/roomfind.png"), tr("&Center"), this);
     connect(m_center, &QAction::triggered, this, [this]() {
@@ -905,6 +981,52 @@ GroupWidget::GroupWidget(Mmapper2Group *const group, MapData *const md, QWidget 
         }
     });
 
+    m_setIcon = new QAction(QIcon(":/icons/group-set-icon.png"), tr("Set &Icon…"), this);
+    connect(m_setIcon, &QAction::triggered, this, [this]() {
+        if (!selectedCharacter) {
+            return;
+        }
+
+        const QString charName = selectedCharacter->getDisplayName().trimmed();
+        const QString tokensDir = QDir(getConfig().canvas.resourcesDirectory).filePath("tokens");
+
+        if (!QDir(tokensDir).exists()) {
+            QMessageBox::information(this,
+                                     tr("No tokens folder"),
+                                     tr("The tokens folder does not exist:\n%1").arg(tokensDir));
+            return;
+        }
+
+        const QString file = QFileDialog::getOpenFileName(this,
+                                                          tr("Choose icon for %1").arg(charName),
+                                                          tokensDir,
+                                                          tr("Images (*.png *.jpg *.jpeg *.bmp *.webp)"));
+        if (file.isEmpty()) {
+            return;
+        }
+
+        const QString base = QFileInfo(file).completeBaseName();
+        setConfig().groupManager.tokenOverrides[charName] = base;
+
+        slot_updateLabels();
+        emit sig_characterUpdated(selectedCharacter);
+    });
+
+    m_useDefaultIcon = new QAction(QIcon(":/icons/group-clear-icon.png"),
+                                   tr("&Use default icon"),
+                                   this);
+    connect(m_useDefaultIcon, &QAction::triggered, this, [this]() {
+        if (!selectedCharacter) {
+            return;
+        }
+
+        const QString charName = selectedCharacter->getDisplayName().trimmed();
+        setConfig().groupManager.tokenOverrides[charName] = kForceFallback;
+
+        slot_updateLabels();
+        emit sig_characterUpdated(selectedCharacter);
+    });
+
     connect(m_table, &QAbstractItemView::clicked, this, [this](const QModelIndex &proxyIndex) {
         if (!proxyIndex.isValid()) {
             return;
@@ -929,6 +1051,8 @@ GroupWidget::GroupWidget(Mmapper2Group *const group, MapData *const md, QWidget 
             contextMenu->setAttribute(Qt::WA_DeleteOnClose);
             contextMenu->addAction(m_center);
             contextMenu->addAction(m_recolor);
+            contextMenu->addAction(m_setIcon);
+            contextMenu->addAction(m_useDefaultIcon);
             contextMenu->popup(QCursor::pos());
         }
     });
@@ -975,8 +1099,23 @@ void GroupWidget::updateColumnVisibility()
         }
         return false;
     };
+
     const bool hide_mana = !one_character_had_mana();
     m_table->setColumnHidden(static_cast<int>(ColumnTypeEnum::MANA), hide_mana);
+
+    const bool hide_tokens = !getConfig().groupManager.showTokens;
+    m_table->setColumnHidden(static_cast<int>(ColumnTypeEnum::CHARACTER_TOKEN), hide_tokens);
+
+    const int icon = getConfig().groupManager.tokenIconSize;
+    m_table->setIconSize(QSize(icon, icon));
+
+    const int row = std::max(icon, m_table->fontMetrics().height() + 4);
+    m_table->verticalHeader()->setDefaultSectionSize(row);
+
+    m_table->resizeRowsToContents();
+    m_table->resizeColumnToContents(static_cast<int>(ColumnTypeEnum::CHARACTER_TOKEN));
+    m_table->resizeColumnToContents(static_cast<int>(ColumnTypeEnum::STATE));
+    m_table->viewport()->update();
 }
 
 void GroupWidget::updatePulseTimer()
@@ -1033,6 +1172,7 @@ void GroupWidget::slot_onCharacterUpdated(SharedGroupChar character)
 {
     assert(character);
     m_model.updateCharacter(character);
+    updateColumnVisibility();
     updatePulseTimer();
 }
 
@@ -1041,4 +1181,9 @@ void GroupWidget::slot_onGroupReset(const GroupVector &newCharacterList)
     m_model.setCharacters(newCharacterList);
     updateColumnVisibility();
     updatePulseTimer();
+}
+
+void GroupWidget::slot_updateLabels()
+{
+    m_model.resetModel();
 }
