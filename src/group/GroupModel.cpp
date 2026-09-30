@@ -11,7 +11,6 @@
 #include "../map/roomid.h"
 #include "CGroupChar.h"
 #include "enums.h"
-#include "tokenmanager.h"
 
 #include <algorithm>
 #include <cassert>
@@ -410,8 +409,8 @@ QVariant GroupModel::dataForCharacter(const SharedGroupChar &pCharacter,
     // Map column to data
     switch (role) {
     case Qt::DecorationRole:
-        if (column == ColumnTypeEnum::CHARACTER_TOKEN && m_tokenManager) {
-            return QIcon(m_tokenManager->getToken(character.getDisplayName()));
+        if (column == ColumnTypeEnum::CHARACTER_TOKEN && m_tokenIconProvider) {
+            return m_tokenIconProvider(character.getDisplayName());
         }
         break;
 
@@ -491,6 +490,7 @@ QVariant GroupModel::dataForCharacter(const SharedGroupChar &pCharacter,
             return prettyName;
         }
         case ColumnTypeEnum::NAME:
+        case ColumnTypeEnum::CHARACTER_TOKEN:
             break;
         case ColumnTypeEnum::ROOM_NAME:
             if (character.getServerId() != INVALID_SERVER_ROOMID) {

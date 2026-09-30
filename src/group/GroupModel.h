@@ -6,16 +6,17 @@
 #include "CGroupChar.h"
 #include "mmapper2character.h"
 
+#include <functional>
 #include <QAbstractTableModel>
 #include <QColor>
 #include <QSortFilterProxyModel>
 #include <QString>
 #include <QtCore>
+#include <QIcon>
 
 class QObject;
 class QPainter;
 class QRect;
-class TokenManager;
 
 class NODISCARD_QOBJECT GroupProxyModel final : public QSortFilterProxyModel
 {
@@ -124,7 +125,7 @@ private:
     GroupVector m_characters;
     bool m_mapLoaded = false;
     bool m_anyMana = false;
-    TokenManager *m_tokenManager = nullptr;
+    std::function<QIcon(const QString &)> m_tokenIconProvider;
 
 public:
     explicit GroupModel(QObject *parent = nullptr);
@@ -140,7 +141,10 @@ public:
     void removeCharacterById(GroupId charId);
     void updateCharacter(const SharedGroupChar &updatedCharacter);
     void resetModel();
-    void setTokenManager(TokenManager *manager) { m_tokenManager = manager; }
+    void setTokenIconProvider(std::function<QIcon(const QString &)> provider)
+    {
+        m_tokenIconProvider = provider;
+    }
 
 public:
     // True when at least one character has (or has had) mana; recomputed on

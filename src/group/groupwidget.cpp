@@ -28,6 +28,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHeaderView>
+#include <QIcon>
 #include <QMenu>
 #include <QMessageBox>
 #include <QMessageLogContext>
@@ -351,7 +352,9 @@ GroupWidget::GroupWidget(Mmapper2Group *const group, MapData *const md, QWidget 
     } else {
         m_model->setCharacters({});
     }
-    m_model->setTokenManager(&tokenManager());
+    m_model->setTokenIconProvider([](const QString &displayName) {
+        return QIcon(tokenManager().getToken(displayName));
+    });
 
     m_proxyModel = new GroupProxyModel(m_table);
     m_proxyModel->setSourceModel(m_model);
