@@ -93,6 +93,14 @@ void ClientTelnet::onError(QAbstractSocket::SocketError error)
 
 void ClientTelnet::sendToMud(const QString &data)
 {
+    // Intercept the local command _room edit and do NOT send it to the server.
+    if (data.trimmed().compare(QStringLiteral("_room edit"), Qt::CaseInsensitive) == 0) {
+        qInfo() << "[Proxy] Intercepted _room edit";
+        emit sig_openRoomEditWindow(); // We'll wire this to MainWindow
+        return;                        // swallow the command (don't forward)
+    }
+
+    // Normal path: forward to the MUD
     submitOverTelnet(data, false);
 }
 

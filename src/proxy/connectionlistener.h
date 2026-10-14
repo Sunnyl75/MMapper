@@ -75,10 +75,13 @@ public:
 
 private:
     void log(const QString &msg) { emit sig_log("Listener", msg); }
+    bool interceptUserCommand(const QString &line);
 
 signals:
     void sig_log(const QString &, const QString &);
     void sig_clientSuccessfullyConnected();
+    void sig_userCommandIntercepted(const QString &line);
+    void sig_openRoomEditWindow();
 
 protected slots:
     void slot_onIncomingConnection(qintptr socketDescriptor);

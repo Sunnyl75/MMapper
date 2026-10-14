@@ -23,6 +23,8 @@
 #include "../global/window_utils.h"
 #include "../group/groupwidget.h"
 #include "../logger/autologger.h"
+#include "../map/ChangeTypes.h"
+#include "../map/mmapper2room.h"
 #include "../pathmachine/mmapper2pathmachine.h"
 #include "../preferences/configdialog.h"
 #include "../proxy/connectionlistener.h"
@@ -33,6 +35,7 @@
 #include "MapZoomSlider.h"
 #include "UpdateDialog.h"
 #include "aboutdialog.h"
+#include "editor/roomxmleditordlg.h"
 #include "findroomsdlg.h"
 #include "infomarkseditdlg.h"
 #include "metatypes.h"
@@ -42,12 +45,15 @@
 #include <memory>
 #include <mutex>
 
+#include <QAction>
 #include <QActionGroup>
 #include <QCloseEvent>
+#include <QDebug>
 #include <QFileDialog>
 #include <QFontDatabase>
 #include <QIcon>
 #include <QProgressDialog>
+#include <QShortcut>
 #include <QSize>
 #include <QString>
 #include <QTextBrowser>
@@ -261,6 +267,9 @@ MainWindow::MainWindow()
     observer.sig2_sentToUserString.connect(m_lifetime, [this](const QString &msg) {
         deref(m_logger).slot_writeToLog(msg);
     });
+    observer.sig2_sentToMudString.connect(m_lifetime, [this](const QString &line) {
+        slot_interceptUserCommand(line);
+    });
 
     m_listener = new ConnectionListener(deref(m_mapData),
                                         deref(m_pathMachine),
@@ -270,6 +279,38 @@ MainWindow::MainWindow()
                                         deref(getCanvas()),
                                         deref(m_gameObserver),
                                         this);
+
+    // Open Room XML editor when the special command arrives through the proxy
+    connect(m_listener,
+            &ConnectionListener::sig_userCommandIntercepted,
+            this,
+            &MainWindow::slot_interceptUserCommand);
+    connect(m_listener,
+            &ConnectionListener::sig_openRoomEditWindow,
+            this,
+            &MainWindow::slot_openRoomEditWindow);
+    // Open the Room XML Editor when the proxy/user enters "_room edit"
+    connect(m_listener,
+            &ConnectionListener::sig_userCommandIntercepted,
+            this,
+            [this](const QString &) {
+                if (!m_mapData) {
+                    showStatusShort(tr("No map loaded."));
+                    return;
+                }
+
+                // Use the last single selected room (or 0 if none cached)
+                const RoomId id = m_lastSelectedRoomId.has_value() ? *m_lastSelectedRoomId
+                                                                   : RoomId{};
+
+                auto *dlg = new RoomXmlEditorDlg(this);
+                connect(dlg,
+                        &RoomXmlEditorDlg::sig_applyRoomFields,
+                        this,
+                        &MainWindow::slot_applyRoomFields);
+                dlg->setAttribute(Qt::WA_DeleteOnClose, true);
+                dlg->openForRoom(m_mapData, id);
+            });
 
     // update connections
     wireConnections();
@@ -1003,6 +1044,51 @@ void MainWindow::createActions()
     rebuildMeshesAct->setStatusTip(tr("Reconstruct the world mesh to fix graphical rendering bugs"));
     rebuildMeshesAct->setCheckable(false);
     connect(rebuildMeshesAct, &QAction::triggered, getCanvas(), &MapCanvas::slot_rebuildMeshes);
+
+    // Open Room XML Editor (temporary binding; will be replaced by /_xedit later)
+    {
+        if (!openXmlEditorAct) {
+            openXmlEditorAct = new QAction(tr("Open Room XML Editor"), this);
+#ifdef Q_OS_MAC
+            // macOS friendly: ⌘⌥X
+            openXmlEditorAct->setShortcut(QKeySequence(Qt::META | Qt::ALT | Qt::Key_X));
+#else
+            // other platforms: Ctrl+Alt+X
+            openXmlEditorAct->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_X));
+#endif
+            openXmlEditorAct->setShortcutContext(Qt::ApplicationShortcut);
+
+            connect(openXmlEditorAct, &QAction::triggered, this, [this]() {
+                qDebug() << "[xedit] action fired";
+
+                // Reuse a single dialog instance
+                if (!m_roomXmlEditorDlg) {
+                    m_roomXmlEditorDlg = new RoomXmlEditorDlg(this);
+                    connect(m_roomXmlEditorDlg, &QObject::destroyed, this, [this](QObject *) {
+                        m_roomXmlEditorDlg = nullptr;
+                    });
+                    connect(m_roomXmlEditorDlg,
+                            &RoomXmlEditorDlg::sig_applyRoomFields,
+                            this,
+                            &MainWindow::slot_applyRoomFields);
+                }
+
+                const RoomId id = m_lastSelectedRoomId.has_value() ? *m_lastSelectedRoomId
+                                                                   : RoomId{};
+                m_roomXmlEditorDlg->openForRoom(m_mapData, id);
+            });
+
+            addAction(openXmlEditorAct);
+        }
+
+#ifdef Q_OS_MAC
+        // Optional backup QShortcut: Ctrl+Alt+X also triggers the same action
+        auto *openXmlEditorBackup = new QShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_X),
+                                                  this);
+        openXmlEditorBackup->setContext(Qt::ApplicationShortcut);
+        connect(openXmlEditorBackup, &QShortcut::activated, openXmlEditorAct, &QAction::trigger);
+#endif
+    }
 }
 
 static void setConfigMapMode(const MapModeEnum mode)
@@ -1435,6 +1521,18 @@ void MainWindow::slot_newRoomSelection(const SigRoomSelection &rs)
         const auto msg = QString("Selection: %1 room%2").arg(selSize).arg(basic_plural(selSize));
         showStatusLong(msg);
     }
+
+    // Cache the last selected RoomId only when exactly one room is selected.
+    if (selSize == 1) {
+        // Try this first:
+        // m_lastSelectedRoomId = rs.deref().front();
+
+        // If the line above doesn't compile, comment it out and try one of these instead:
+        // m_lastSelectedRoomId = rs.deref()[0];
+        m_lastSelectedRoomId = *rs.deref().begin();
+    } else {
+        m_lastSelectedRoomId.reset();
+    }
 }
 
 void MainWindow::slot_newConnectionSelection(ConnectionSelection *const cs)
@@ -1788,6 +1886,36 @@ void MainWindow::slot_onEditRoomSelection()
     }
 }
 
+void MainWindow::onRoomXmlApply(const RoomId id,
+                                const QString &name,
+                                const QString &desc,
+                                const QString &contents)
+{
+    if (!m_mapData) {
+        qWarning() << "[xedit] onRoomXmlApply() called with null m_mapData";
+        return;
+    }
+
+    ChangeList changes;
+
+    // Always ASSIGN the provided values so the user can also clear fields.
+    changes.add(Change{room_change_types::ModifyRoomFlags{id,
+                                                          mmqt::makeRoomName(name),
+                                                          FlagModifyModeEnum::ASSIGN}});
+    changes.add(Change{room_change_types::ModifyRoomFlags{id,
+                                                          mmqt::makeRoomDesc(desc),
+                                                          FlagModifyModeEnum::ASSIGN}});
+    changes.add(Change{room_change_types::ModifyRoomFlags{id,
+                                                          mmqt::makeRoomContents(contents),
+                                                          FlagModifyModeEnum::ASSIGN}});
+
+    m_mapData->applyChanges(changes);
+
+    // Update modified state and repaint
+    updateMapModified(); // marks window modified and calls getCanvas()->update()
+    qDebug() << "[xedit] applied name/desc/contents to room" << id.value();
+}
+
 void MainWindow::slot_onDeleteInfomarkSelection()
 {
     if (m_infoMarkSelection == nullptr) {
@@ -2130,4 +2258,95 @@ void MainWindow::onSuccessfulSave(const SaveModeEnum mode,
             config.fileName = absoluteFilePath;
         }
     }
+}
+
+void MainWindow::slot_applyRoomFields(RoomId id,
+                                      const QString &name,
+                                      const QString &desc,
+                                      const QString &contents)
+{
+    if (!m_mapData) {
+        qWarning() << "[xedit] slot_applyRoomFields() called with null m_mapData";
+        return;
+    }
+
+    ChangeList changes;
+
+    // Assign the edited fields back into the map
+    changes.add(Change{room_change_types::ModifyRoomFlags{id,
+                                                          mmqt::makeRoomName(name),
+                                                          FlagModifyModeEnum::ASSIGN}});
+    changes.add(Change{room_change_types::ModifyRoomFlags{id,
+                                                          mmqt::makeRoomDesc(desc),
+                                                          FlagModifyModeEnum::ASSIGN}});
+    changes.add(Change{room_change_types::ModifyRoomFlags{id,
+                                                          mmqt::makeRoomContents(contents),
+                                                          FlagModifyModeEnum::ASSIGN}});
+
+    m_mapData->applyChanges(changes);
+
+    updateMapModified();
+    qDebug() << "[xedit] Updated room fields for RoomId =" << id.value();
+}
+
+void MainWindow::slot_openRoomXmlEditorForCurrentSelection()
+{
+    // Guard 1: Map must exist and be non-empty
+    if (!m_mapData || m_mapData->isEmpty()) {
+        qWarning() << "[xedit] Cannot open XML editor: map not loaded yet.";
+        return;
+    }
+
+    // Guard 2: We need a selected room AND it must still exist
+    if (!m_lastSelectedRoomId.has_value() || !m_mapData->findRoomHandle(*m_lastSelectedRoomId)) {
+        qWarning() << "[xedit] Cannot open XML editor: no valid room selected.";
+        return;
+    }
+
+    const RoomId id = *m_lastSelectedRoomId;
+    qDebug() << "[xedit] Opening XML editor for RoomId =" << id.value();
+
+    auto *dlg = new RoomXmlEditorDlg(this);
+    connect(dlg, &RoomXmlEditorDlg::sig_applyRoomFields, this, &MainWindow::slot_applyRoomFields);
+
+    dlg->setAttribute(Qt::WA_DeleteOnClose, true);
+    dlg->openForRoom(m_mapData, id);
+}
+
+void MainWindow::slot_interceptUserCommand(const QString &line)
+{
+    // Only act on the exact command `_room edit` (case-insensitive, ignore surrounding spaces)
+    const QString cmd = line.trimmed();
+    if (cmd.compare(QStringLiteral("_room edit"), Qt::CaseInsensitive) != 0)
+        return;
+
+    if (!m_mapData) {
+        qWarning() << "[xedit] No map loaded.";
+        return;
+    }
+
+    const RoomId id = m_lastSelectedRoomId.value_or(RoomId{});
+
+    auto *dlg = new RoomXmlEditorDlg(this);
+    // Save handler -> apply to model
+    connect(dlg, &RoomXmlEditorDlg::sig_applyRoomFields, this, &MainWindow::slot_applyRoomFields);
+
+    dlg->setAttribute(Qt::WA_DeleteOnClose, true);
+    dlg->openForRoom(m_mapData, id);
+}
+
+void MainWindow::slot_openRoomEditWindow()
+{
+    if (!m_mapData) {
+        qWarning() << "[xedit] No map loaded.";
+        return;
+    }
+
+    const RoomId id = m_lastSelectedRoomId.has_value() ? *m_lastSelectedRoomId : RoomId{};
+    qDebug() << "[xedit] opening editor from proxy command; RoomId =" << id.value();
+
+    auto *dlg = new RoomXmlEditorDlg(this);
+    connect(dlg, &RoomXmlEditorDlg::sig_applyRoomFields, this, &MainWindow::slot_applyRoomFields);
+    dlg->setAttribute(Qt::WA_DeleteOnClose, true);
+    dlg->openForRoom(m_mapData, id);
 }

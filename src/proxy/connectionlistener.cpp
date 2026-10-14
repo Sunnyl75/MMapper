@@ -127,3 +127,17 @@ void ConnectionListener::slot_onIncomingConnection(qintptr socketDescriptor)
         }
     }
 }
+
+bool ConnectionListener::interceptUserCommand(const QString &line)
+{
+    // Accept forms like "_room edit" with optional leading/trailing whitespace
+    const QString trimmed = line.trimmed();
+
+    if (trimmed.compare(QStringLiteral("_room edit"), Qt::CaseInsensitive) == 0) {
+        // Tell MainWindow (or anything connected) to open the dialog
+        emit sig_userCommandIntercepted(trimmed);
+        return true; // consume: do NOT forward to server
+    }
+
+    return false; // not a special command, let it through
+}

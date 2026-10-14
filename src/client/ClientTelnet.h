@@ -74,6 +74,9 @@ protected:
     void onDisconnected();
     void onError(QAbstractSocket::SocketError);
 
+signals:
+    void sig_openRoomEditWindow();
+
     /** Reads, parses telnet, and so forth */
     void onReadyRead();
 };

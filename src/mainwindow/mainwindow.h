@@ -11,7 +11,11 @@
 #include "../global/Signal2.h"
 #include "../global/macros.h"
 #include "../group/mmapper2group.h"
+#include "../map/ChangeList.h"
+#include "../map/ChangeTypes.h"
 #include "../map/Changes.h"
+#include "../map/room.h"
+#include "../map/roomid.h"
 #include "../mapdata/roomselection.h"
 
 #include <exception>
@@ -21,8 +25,10 @@
 #include <QActionGroup>
 #include <QDockWidget>
 #include <QFileDialog>
+#include <QKeySequence>
 #include <QMainWindow>
 #include <QProgressDialog>
+#include <QShortcut>
 #include <QSize>
 #include <QString>
 #include <QTextBrowser>
@@ -64,6 +70,7 @@ class RoomEditAttrDlg;
 class RoomManager;
 class RoomSelection;
 class RoomWidget;
+class RoomXmlEditorDlg;
 class UpdateDialog;
 class DescriptionWidget;
 
@@ -116,6 +123,8 @@ private:
 
     std::unique_ptr<QProgressDialog> m_progressDlg;
     std::unique_ptr<RoomEditAttrDlg> m_roomEditAttrDlg;
+
+    std::optional<RoomId> m_lastSelectedRoomId;
 
     QToolBar *fileToolBar = nullptr;
     QToolBar *mouseModeToolBar = nullptr;
@@ -174,6 +183,8 @@ private:
     QAction *layerUpAct = nullptr;
     QAction *layerDownAct = nullptr;
     QAction *layerResetAct = nullptr;
+
+    QAction *openXmlEditorAct = nullptr;
 
     struct NODISCARD MouseModeActions final
     {
@@ -380,6 +391,9 @@ private:
     void reportOpenFileFailure(const QString &fileName, const QString &reason);
     void reportOpenFileException(const QString &fileName, const std::exception_ptr &eptr);
 
+private:
+    RoomXmlEditorDlg *m_roomXmlEditorDlg = nullptr; // member
+
 public slots:
     void slot_newFile();
     void slot_open();
@@ -395,6 +409,11 @@ public slots:
 
     NODISCARD bool slot_checkMapConsistency();
     NODISCARD bool slot_generateBaseMap();
+
+    void onRoomXmlApply(RoomId id,
+                        const QString &name,
+                        const QString &desc,
+                        const QString &contents);
 
     void slot_log(const QString &, const QString &);
 
@@ -449,4 +468,14 @@ public slots:
     void slot_openSettingUpMmapper();
     void slot_openNewbieHelp();
     void onReportIssueTriggered();
+
+    void slot_applyRoomFields(RoomId id,
+                              const QString &name,
+                              const QString &desc,
+                              const QString &contents);
+    void slot_openRoomEditWindow();
+
+private slots:
+    void slot_openRoomXmlEditorForCurrentSelection();
+    void slot_interceptUserCommand(const QString &line);
 };

@@ -648,6 +648,7 @@ add_executable(mmapper WIN32 MACOSX_BUNDLE
     ${mmapper_RCS}
     ${mmapper_QRC}
     ${mmapper_DATA}
+    editor/roomxmleditordlg.h editor/roomxmleditordlg.cpp
 )
 
 set(mm_libs mm_map mm_global)
@@ -658,6 +659,7 @@ target_link_libraries(mmapper PUBLIC
     Qt6::Network
     Qt6::OpenGL
     Qt6::OpenGLWidgets
+    Qt6::Xml
     # note: link order matters on some platforms. include ${mm_libs} twice if you have a link failure.
     ${mm_libs}
     ${CMAKE_THREAD_LIBS_INIT}
