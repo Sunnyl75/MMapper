@@ -80,6 +80,16 @@ GraphicsPage::GraphicsPage(QWidget *parent)
         graphicsSettingsChanged();
     });
 
+    connect(ui->seasonalTerrain, &QCheckBox::stateChanged, this, [this](int /*unused*/) {
+        setConfig().canvas.seasonalTerrain.set(ui->seasonalTerrain->isChecked());
+        graphicsSettingsChanged();
+    });
+
+    connect(ui->organicTerrain, &QCheckBox::stateChanged, this, [this](int /*unused*/) {
+        setConfig().canvas.organicTerrain.set(ui->organicTerrain->isChecked());
+        graphicsSettingsChanged();
+    });
+
     connect(ui->drawUnsavedChanges, &QCheckBox::stateChanged, this, [this](int /*unused*/) {
         setConfig().canvas.showUnsavedChanges.set(ui->drawUnsavedChanges->isChecked());
         graphicsSettingsChanged();
@@ -183,6 +193,8 @@ void GraphicsPage::slot_loadConfig()
 
     ui->trilinearFilteringCheckBox->setChecked(settings.trilinearFiltering.get());
 
+    ui->organicTerrain->setChecked(settings.organicTerrain.get());
+    ui->seasonalTerrain->setChecked(settings.seasonalTerrain.get());
     ui->drawUnsavedChanges->setChecked(settings.showUnsavedChanges.get());
     ui->drawNeedsUpdate->setChecked(settings.showMissingMapId.get());
     ui->drawNotMappedExits->setChecked(settings.showUnmappedExits.get());

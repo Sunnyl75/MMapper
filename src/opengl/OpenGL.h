@@ -98,6 +98,8 @@ public:
 
 public:
     NODISCARD UniqueMesh createRoomQuadTexBatch(View<RoomQuadTexVert> verts, MMTextureId texture);
+    NODISCARD UniqueMesh createTerrainSpriteBatch(View<TerrainSpriteVert> verts,
+                                                  MMTextureId texture);
 
 public:
     NODISCARD UniqueMesh createFontMesh(const SharedMMTexture &texture,

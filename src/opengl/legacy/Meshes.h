@@ -215,6 +215,27 @@ private:
     }
 };
 
+template<typename VertexType_>
+class NODISCARD TerrainSpriteMesh final : public SimpleMesh<VertexType_, TerrainSpriteShader>
+{
+public:
+    using Base = SimpleMesh<VertexType_, TerrainSpriteShader>;
+    using Base::Base;
+
+private:
+    void virt_setupAttribs() final
+    {
+        const auto stride = static_cast<GLsizei>(sizeof(VertexType_));
+        Functions &gl = Base::m_functions;
+        CHECK_ATTR_LOC(0, "aAnchorSizeLayer");
+        CHECK_ATTR_LOC(1, "aTextureColor");
+        gl.enableAttrib(0, 4, GL_FLOAT, GL_FALSE, stride, VPO(anchorSizeLayer));
+        gl.enableAttribI(1, 4, GL_INT, stride, VPO(textureColor));
+        gl.glVertexAttribDivisor(0, 1);
+        gl.glVertexAttribDivisor(1, 1);
+    }
+};
+
 // Per-vertex color
 // flat-shaded in MMapper, due to glShadeModel(GL_FLAT)
 template<typename VertexType_>

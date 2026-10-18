@@ -59,6 +59,7 @@
 #include <QFontDatabase>
 #include <QIcon>
 #include <QProgressDialog>
+#include <QSignalBlocker>
 #include <QSize>
 #include <QString>
 #include <QTextBrowser>
@@ -368,6 +369,90 @@ MainWindow::MainWindow()
     setupToolBars();
     setupMenuBar();
     setupStatusBar();
+
+    // Temporary terrain-only clock for inspecting seasonal transitions and shadows.
+    // It never changes GameObserver, the live MUME clock, or saved configuration.
+    auto *const terrainClockDock = new QDockWidget(tr("Terrain Preview Clock"), this);
+    terrainClockDock->setObjectName("TerrainPreviewClockDock");
+    terrainClockDock->setAllowedAreas(Qt::TopDockWidgetArea | Qt::BottomDockWidgetArea);
+    terrainClockDock->setFeatures(QDockWidget::DockWidgetMovable
+                                  | QDockWidget::DockWidgetFloatable
+                                  | QDockWidget::DockWidgetClosable);
+    auto *const terrainClockWidget = new QWidget(terrainClockDock);
+    auto *const terrainClockLayout = new QFormLayout(terrainClockWidget);
+    auto *const previewEnabled = new QCheckBox(tr("Use preview time"), terrainClockWidget);
+    auto *const year = new QSpinBox(terrainClockWidget);
+    auto *const month = new QSpinBox(terrainClockWidget);
+    auto *const day = new QSpinBox(terrainClockWidget);
+    auto *const hour = new QSpinBox(terrainClockWidget);
+    auto *const minute = new QSpinBox(terrainClockWidget);
+    auto *const speed = new QComboBox(terrainClockWidget);
+    year->setRange(MUME_START_YEAR, 4099);
+    year->setValue(MUME_START_YEAR);
+    month->setRange(1, MUME_MONTHS_PER_YEAR);
+    month->setValue(10);
+    day->setRange(1, MUME_DAYS_PER_MONTH);
+    day->setValue(15);
+    hour->setRange(1, MUME_HOURS_PER_DAY);
+    hour->setValue(12);
+    minute->setRange(0, MUME_MINUTES_PER_HOUR - 1);
+    speed->addItem(tr("Paused"), 0);
+    speed->addItem(tr("1 game minute / second"), 1);
+    speed->addItem(tr("10 game minutes / second"), 10);
+    speed->addItem(tr("1 game hour / second"), 60);
+    terrainClockLayout->addRow(previewEnabled);
+    terrainClockLayout->addRow(tr("Year"), year);
+    terrainClockLayout->addRow(tr("Month"), month);
+    terrainClockLayout->addRow(tr("Day"), day);
+    terrainClockLayout->addRow(tr("Hour"), hour);
+    terrainClockLayout->addRow(tr("Minute"), minute);
+    terrainClockLayout->addRow(tr("Advance"), speed);
+    terrainClockDock->setWidget(terrainClockWidget);
+    addDockWidget(Qt::BottomDockWidgetArea, terrainClockDock);
+    viewMenu->addAction(terrainClockDock->toggleViewAction());
+    terrainClockDock->hide();
+
+    const auto applyPreviewTime = [this, previewEnabled, year, month, day, hour, minute]() {
+        if (previewEnabled->isChecked()) {
+            getCanvas()->setTerrainPreviewMoment(
+                MumeMoment{year->value(), month->value() - 1, day->value() - 1, hour->value() - 1, minute->value()});
+        } else {
+            getCanvas()->setTerrainPreviewMoment(std::nullopt);
+        }
+    };
+    connect(previewEnabled, &QCheckBox::toggled, this, [applyPreviewTime](bool) {
+        applyPreviewTime();
+    });
+    for (QSpinBox *const control : {year, month, day, hour, minute}) {
+        connect(control, qOverload<int>(&QSpinBox::valueChanged), this, [applyPreviewTime](int) {
+            applyPreviewTime();
+        });
+    }
+    auto *const previewTimer = new QTimer(terrainClockDock);
+    previewTimer->setInterval(1000);
+    connect(previewTimer, &QTimer::timeout, this, [=]() {
+        if (!previewEnabled->isChecked() || speed->currentData().toInt() == 0)
+            return;
+        const MumeMoment current{year->value(), month->value() - 1, day->value() - 1, hour->value() - 1, minute->value()};
+        const auto advanceMinutes = static_cast<int64_t>(speed->currentData().toInt());
+        const MumeMoment next = MumeMoment::sinceMumeEpoch(current.toSeconds() + advanceMinutes);
+        const QSignalBlocker blockYear{year};
+        const QSignalBlocker blockMonth{month};
+        const QSignalBlocker blockDay{day};
+        const QSignalBlocker blockHour{hour};
+        const QSignalBlocker blockMinute{minute};
+        year->setValue(next.year);
+        month->setValue(next.month + 1);
+        day->setValue(next.day + 1);
+        hour->setValue(next.hour + 1);
+        minute->setValue(next.minute);
+        applyPreviewTime();
+    });
+    previewTimer->start();
+    connect(terrainClockDock, &QDockWidget::visibilityChanged, this, [previewEnabled](bool visible) {
+        if (!visible)
+            previewEnabled->setChecked(false);
+    });
 
     setCorner(Qt::TopLeftCorner, Qt::TopDockWidgetArea);
     setCorner(Qt::BottomLeftCorner, Qt::BottomDockWidgetArea);

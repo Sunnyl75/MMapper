@@ -139,6 +139,12 @@ UniqueMesh OpenGL::createRoomQuadTexBatch(const View<RoomQuadTexVert> batch,
     return getFunctions().createRoomQuadTexBatch(batch, texture);
 }
 
+UniqueMesh OpenGL::createTerrainSpriteBatch(const View<TerrainSpriteVert> batch,
+                                            const MMTextureId texture)
+{
+    return getFunctions().createTerrainSpriteBatch(batch, texture);
+}
+
 UniqueMesh OpenGL::createFontMesh(const SharedMMTexture &texture,
                                   const DrawModeEnum mode,
                                   const View<FontVert3d> batch)

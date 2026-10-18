@@ -11,6 +11,7 @@
 #include "../opengl/Weather.h"
 #include "Filenames.h"
 #include "RoadIndex.h"
+#include "TerrainSpritePacks.h"
 #include "mapcanvas.h"
 
 #include <algorithm>
@@ -452,6 +453,30 @@ void MapCanvas::initTextures()
     MapCanvasTextures &textures = this->m_textures;
     auto &opengl = this->getOpenGL();
 
+    auto packs = terrain_sprites::loadSpritePacks(getPixmapFilenameRaw("organic-terrain/packs.json"),
+                                                  QImage{QStringLiteral(
+                                                      ":/pixmaps/terrain-trees-seasons.png")});
+    constexpr std::array<const char *, 3> sheets{"terrain-forest-ground-seasons.png",
+                                                 "terrain-field-ground-seasons.png",
+                                                 "terrain-field-details-seasons.png"};
+    for (std::size_t i = 0; i < sheets.size(); ++i) {
+        QImage sheet{getPixmapFilenameRaw(QString::fromLatin1(sheets[i]))};
+        const auto valid = [](const QImage &image) {
+            return !image.isNull() && image.width() % 6 == 0 && image.height() % 4 == 0
+                   && image.width() / 6 == image.height() / 4;
+        };
+        if (!valid(sheet)) {
+            qWarning() << "Invalid seasonal ground sheet; using bundled fallback:" << sheets[i];
+            sheet = QImage{QStringLiteral(":/pixmaps/") + QString::fromLatin1(sheets[i])};
+        }
+        textures.terrainGroundPacks[i] = terrain_sprites::appendSeasonalSheet(packs, sheet);
+    }
+    textures.terrain_sprites.clear();
+    textures.terrainSpritePacks = std::move(packs.areas);
+    for (auto &mips : packs.atlases) {
+        textures.terrain_sprites.emplace_back(MMTexture::alloc(std::move(mips), true));
+    }
+
     loadPixmapArray(textures.terrain); // 128
     loadPixmapArray(textures.road);    // 128
     loadPixmapArray(textures.trail);   // 64
@@ -726,6 +751,15 @@ NODISCARD static MMTexArrayPosition copy_proxy(const SharedMMTexture &pTex)
     return tex.getArrayPosition();
 }
 
+static std::vector<MMTexArrayPosition> copy_proxy(const TerrainSpriteTextures &input)
+{
+    std::vector<MMTexArrayPosition> output;
+    output.reserve(input.size());
+    for (const auto &texture : input)
+        output.emplace_back(copy_proxy(texture));
+    return output;
+}
+
 template<typename T>
 auto copy_proxy(const T &input) -> ::mctp::detail::proxy_t<T>
 {
@@ -745,6 +779,8 @@ auto copy_proxy(const T &input) -> ::mctp::detail::proxy_t<T>
 MapCanvasTexturesProxy getProxy(const MapCanvasTextures &mct)
 {
     MapCanvasTexturesProxy result;
+    result.terrainSpritePacks = mct.terrainSpritePacks;
+    result.terrainGroundPacks = mct.terrainGroundPacks;
 #define X_COPY_PROXY(_Type, _Name) result._Name = detail::copy_proxy(mct._Name);
     XFOREACH_MAPCANVAS_TEXTURES(X_COPY_PROXY)
 #undef X_COPY_PROXY
@@ -761,6 +797,14 @@ void MapCanvas::updateTextures()
         [wantTrilinear](std::string_view /*array_name*/, const SharedMMTexture &arr) {
             ::setTrilinear(arr, wantTrilinear);
         });
+
+    // Sprite mips are supplied manually, like dotted walls, but their artwork
+    // needs smooth filtering. Honour the same preference without regenerating mips.
+    if (const auto &sprites = m_textures.terrain_sprites_Array) {
+        sprites->get()->setMinMagFilters(wantTrilinear ? QOpenGLTexture::LinearMipMapLinear
+                                                       : QOpenGLTexture::LinearMipMapNearest,
+                                         QOpenGLTexture::Linear);
+    }
 
     // called to trigger an early error
     std::ignore = mctp::getProxy(m_textures);

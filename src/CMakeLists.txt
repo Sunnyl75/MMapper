@@ -97,6 +97,10 @@ set(mmapper_SRCS
     display/RoomSelections.cpp
     display/Textures.cpp
     display/Textures.h
+    display/TerrainSprites.h
+    display/TerrainSpritePacks.h
+    display/TerrainSpritePacks.cpp
+    display/TerrainLighting.h
     display/connectionselection.cpp
     display/connectionselection.h
     display/mapcanvas.cpp

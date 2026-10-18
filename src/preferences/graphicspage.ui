@@ -205,6 +205,22 @@
       <property name="spacing">
        <number>6</number>
       </property>
+      <item row="2" column="0" colspan="2">
+       <widget class="QCheckBox" name="seasonalTerrain">
+        <property name="text"><string>Seasonal terrain</string></property>
+        <property name="toolTip"><string>Gradually change trees, ground and field details within two game weeks either side of each season boundary. Requires known game time.</string></property>
+       </widget>
+      </item>
+      <item row="1" column="0" colspan="2">
+       <widget class="QCheckBox" name="organicTerrain">
+        <property name="text">
+         <string>Organic terrain (forest and field sprites)</string>
+        </property>
+        <property name="toolTip">
+         <string>Draw stable, overlapping ground patches, trees and field details. Details are hidden at distant zoom levels.</string>
+        </property>
+       </widget>
+      </item>
       <item row="0" column="0">
        <widget class="QCheckBox" name="drawUpperLayersTextured">
         <property name="text">
@@ -446,6 +462,8 @@
   <tabstop>mapFontPushButton</tabstop>
   <tabstop>drawUpperLayersTextured</tabstop>
   <tabstop>drawDoorNames</tabstop>
+  <tabstop>organicTerrain</tabstop>
+  <tabstop>seasonalTerrain</tabstop>
   <tabstop>drawUnsavedChanges</tabstop>
   <tabstop>drawNeedsUpdate</tabstop>
   <tabstop>drawNotMappedExits</tabstop>

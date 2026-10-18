@@ -176,6 +176,11 @@
         <file>pixmaps/terrain-city.png</file>
         <file>pixmaps/terrain-field.png</file>
         <file>pixmaps/terrain-forest.png</file>
+        <file>pixmaps/terrain-trees-seasons.png</file>
+        <file>pixmaps/terrain-forest-ground-seasons.png</file>
+        <file>pixmaps/terrain-field-ground-seasons.png</file>
+        <file>pixmaps/terrain-field-details-seasons.png</file>
+        <file>pixmaps/organic-terrain/packs.json</file>
         <file>pixmaps/terrain-hills.png</file>
         <file>pixmaps/terrain-indoors.png</file>
         <file>pixmaps/terrain-mountains.png</file>
@@ -212,6 +217,8 @@
         <file>shaders/legacy/line/acolor/vert.glsl</file>
         <file>shaders/legacy/line/ucolor/frag.glsl</file>
         <file>shaders/legacy/line/ucolor/vert.glsl</file>
+        <file>shaders/legacy/terrain/frag.glsl</file>
+        <file>shaders/legacy/terrain/vert.glsl</file>
         <file>shaders/legacy/room/tex/acolor/frag.glsl</file>
         <file>shaders/legacy/room/tex/acolor/vert.glsl</file>
         <file>shaders/legacy/plain/acolor/frag.glsl</file>

@@ -104,6 +104,26 @@ private:
     }
 };
 
+struct NODISCARD TerrainSpriteShader final : public AbstractShaderProgram
+{
+public:
+    using AbstractShaderProgram::AbstractShaderProgram;
+
+    ~TerrainSpriteShader() final;
+
+private:
+    void virt_setUniforms(const glm::mat4 &mvp, const GLRenderState::Uniforms &uniforms) final
+    {
+        assert(uniforms.textures[0] != INVALID_MM_TEXTURE_ID);
+
+        setColor("uColor", uniforms.color);
+        setMatrix("uMVP", mvp);
+        setTexture("uTexture", 0);
+        setUniform4fv(getUniformLocation("uTerrainShadow"), 1, &uniforms.terrainShadow.x);
+        setUniform1fv(getUniformLocation("uTerrainDay"), 1, &uniforms.terrainDay);
+    }
+};
+
 struct NODISCARD UColorTexturedShader final : public AbstractShaderProgram
 {
 public:
@@ -256,6 +276,7 @@ private:
 
 private:
     std::shared_ptr<RoomQuadTexShader> m_roomQuadTexShader;
+    std::shared_ptr<TerrainSpriteShader> m_terrainSpriteShader;
 
 private:
     std::shared_ptr<FontShader> m_font;
@@ -294,6 +315,7 @@ public:
 
 public:
     NODISCARD const std::shared_ptr<RoomQuadTexShader> &getRoomQuadTexShader();
+    NODISCARD const std::shared_ptr<TerrainSpriteShader> &getTerrainSpriteShader();
 
 public:
     NODISCARD const std::shared_ptr<FontShader> &getFontShader();

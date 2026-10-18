@@ -182,6 +182,9 @@ private:
 private:
     MapScreen m_mapScreen;
     GameObserver &m_observer;
+    glm::vec4 m_terrainShadow{0.f};
+    float m_terrainDay = -1.f;
+    std::optional<MumeMoment> m_terrainPreviewMoment;
     mutable OpenGL m_opengl;
     GLFont m_glFont;
     Batches m_batches;
@@ -269,6 +272,7 @@ public:
     void hostResize(int width, int height, qreal dpr);
     // Must be called with a current GL context (the host is responsible for that).
     void hostCleanupGL();
+    void setTerrainPreviewMoment(std::optional<MumeMoment> moment);
     NODISCARD bool isCleanedUp() const { return m_cleanedUp; }
 
 public:

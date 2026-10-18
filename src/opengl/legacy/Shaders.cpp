@@ -36,6 +36,7 @@ AColorTexturedShader::~AColorTexturedShader() = default;
 UColorTexturedShader::~UColorTexturedShader() = default;
 
 RoomQuadTexShader::~RoomQuadTexShader() = default;
+TerrainSpriteShader::~TerrainSpriteShader() = default;
 
 FontShader::~FontShader() = default;
 PointShader::~PointShader() = default;
@@ -77,6 +78,7 @@ void ShaderPrograms::resetAll()
     m_uTexturedShader.reset();
 
     m_roomQuadTexShader.reset();
+    m_terrainSpriteShader.reset();
 
     m_font.reset();
     m_point.reset();
@@ -144,6 +146,11 @@ const std::shared_ptr<AColorTexturedShader> &ShaderPrograms::getTexturedAColorSh
 const std::shared_ptr<RoomQuadTexShader> &ShaderPrograms::getRoomQuadTexShader()
 {
     return getInitialized<RoomQuadTexShader>(m_roomQuadTexShader, getFunctions(), "room/tex/acolor");
+}
+
+const std::shared_ptr<TerrainSpriteShader> &ShaderPrograms::getTerrainSpriteShader()
+{
+    return getInitialized<TerrainSpriteShader>(m_terrainSpriteShader, getFunctions(), "terrain");
 }
 
 const std::shared_ptr<UColorTexturedShader> &ShaderPrograms::getTexturedUColorShader()

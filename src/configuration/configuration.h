@@ -178,6 +178,8 @@ public:
         // 100 the offscreen framebuffer shrinks accordingly (see
         // Legacy::Functions::setRenderScale()).
         NamedConfig<int> renderScale{"RENDER_SCALE", 100};
+        NamedConfig<bool> organicTerrain{"ORGANIC_TERRAIN", false};
+        NamedConfig<bool> seasonalTerrain{"SEASONAL_TERRAIN", true};
         NamedConfig<bool> trilinearFiltering{"TRILINEAR_FILTERING", true};
         NamedConfig<bool> showMissingMapId{"SHOW_MISSING_MAPID", false};
         NamedConfig<bool> showUnsavedChanges{"SHOW_UNSAVED_CHANGES", false};

@@ -6,6 +6,7 @@
 
 #include "mapcanvas.h"
 
+#include "../clock/mumeclock.h"
 #include "../configuration/configuration.h"
 #include "../global/parserutils.h"
 #include "../global/progresscounter.h"
@@ -22,6 +23,8 @@
 #include "InfomarkSelection.h"
 #include "MapCanvasData.h"
 #include "MapCanvasRoomDrawer.h"
+#include "TerrainLighting.h"
+#include "TerrainSprites.h"
 #include "connectionselection.h"
 
 #include <array>
@@ -97,7 +100,64 @@ MapCanvas::MapCanvas(MapData &mapData,
                                                   : FrameManager::AnimationStatusEnum::Stop;
     });
 
+    m_observer.sig2_tick.connect(m_lifetime, [this](const MumeMoment &moment) {
+        glm::vec4 next{0.f};
+        float nextDay = -1.f;
+        const bool preview = m_terrainPreviewMoment.has_value();
+        const MumeMoment &terrainMoment = preview ? *m_terrainPreviewMoment : moment;
+        // Clock ticks also occur before a game-time observation is available.
+        if (preview || m_observer.getTimeOfDay() != MumeTimeEnum::UNKNOWN) {
+            nextDay = static_cast<float>(terrainMoment.dayOfYear())
+                      + static_cast<float>(terrainMoment.hour) / 24.f
+                      + static_cast<float>(terrainMoment.minute) / 1440.f;
+            const auto dawnDusk = MumeClock::getDawnDusk(terrainMoment.month);
+            const auto light = terrain_lighting::calculate(
+                static_cast<double>(terrainMoment.hour) + static_cast<double>(terrainMoment.minute) / 60.0,
+                dawnDusk.dawnHour,
+                dawnDusk.duskHour,
+                static_cast<double>(terrainMoment.moonZenithMinutes()) / 60.0,
+                static_cast<double>(terrainMoment.moonLevel()) / 12.0,
+                terrainMoment.moonVisibility() != MumeMoonVisibilityEnum::INVISIBLE
+                    && !terrainMoment.isMoonBelowHorizon());
+            next = glm::vec4{light.x, light.y, light.opacity, 1.f};
+        }
+        constexpr float dayChangeEpsilon = 1.e-6f;
+        if (next != m_terrainShadow || std::abs(nextDay - m_terrainDay) > dayChangeEpsilon) {
+            m_terrainShadow = next;
+            m_terrainDay = nextDay;
+            if (getConfig().canvas.organicTerrain.get() && !m_data.isEmpty()
+                && getTotalScaleFactor() >= terrain_sprites::ZOOM_CUTOFF) {
+                m_frameManager.requestUpdate();
+            }
+        }
+    });
+
     applyCursor(Qt::OpenHandCursor);
+}
+
+void MapCanvas::setTerrainPreviewMoment(std::optional<MumeMoment> moment)
+{
+    m_terrainPreviewMoment = std::move(moment);
+    if (m_terrainPreviewMoment.has_value()) {
+        const MumeMoment &preview = *m_terrainPreviewMoment;
+        const auto dawnDusk = MumeClock::getDawnDusk(preview.month);
+        const auto light = terrain_lighting::calculate(
+            static_cast<double>(preview.hour) + static_cast<double>(preview.minute) / 60.0,
+            dawnDusk.dawnHour,
+            dawnDusk.duskHour,
+            static_cast<double>(preview.moonZenithMinutes()) / 60.0,
+            static_cast<double>(preview.moonLevel()) / 12.0,
+            preview.moonVisibility() != MumeMoonVisibilityEnum::INVISIBLE
+                && !preview.isMoonBelowHorizon());
+        m_terrainShadow = glm::vec4{light.x, light.y, light.opacity, 1.f};
+        m_terrainDay = static_cast<float>(preview.dayOfYear())
+                       + static_cast<float>(preview.hour) / 24.f
+                       + static_cast<float>(preview.minute) / 1440.f;
+    } else {
+        m_terrainShadow = glm::vec4{0.f};
+        m_terrainDay = -1.f;
+    }
+    m_frameManager.requestUpdate();
 }
 
 MapCanvas::~MapCanvas() = default;

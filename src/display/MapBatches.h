@@ -13,6 +13,10 @@ using RoomTintArray = EnumIndexedArray<T, RoomTintEnum, NUM_ROOM_TINTS>;
 struct NODISCARD LayerMeshes final
 {
     UniqueMeshVector terrain;
+    UniqueMeshVector forestTerrain;
+    UniqueMesh organicGroundBase;
+    UniqueMesh groundSprites;
+    UniqueMesh terrainSprites;
     UniqueMeshVector trails;
     RoomTintArray<UniqueMesh> tints;
     UniqueMeshVector overlays;
@@ -29,7 +33,11 @@ struct NODISCARD LayerMeshes final
     DEFAULT_MOVES_DELETE_COPIES(LayerMeshes);
     ~LayerMeshes() = default;
 
-    void render(int thisLayer, int focusedLayer);
+    void render(int thisLayer,
+                int focusedLayer,
+                bool drawTerrainSprites,
+                const glm::vec4 &shadow,
+                float day);
     explicit operator bool() const { return isValid; }
 };
 
@@ -38,6 +46,10 @@ struct NODISCARD LayerMeshesIntermediate final
     using Fn = std::function<UniqueMesh(OpenGL &)>;
     using FnVec = std::vector<Fn>;
     FnVec terrain;
+    FnVec forestTerrain;
+    Fn organicGroundBase;
+    Fn groundSprites;
+    Fn terrainSprites;
     FnVec trails;
     RoomTintArray<Fn> tints;
     FnVec overlays;

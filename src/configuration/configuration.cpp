@@ -301,6 +301,8 @@ ConstString KEY_TAB_COMPLETION_DICTIONARY_SIZE = "Tab completion dictionary size
 ConstString KEY_THEME = "Theme";
 ConstString KEY_TLS_ENCRYPTION = "TLS encryption";
 ConstString KEY_USE_INTERNAL_EDITOR = "Use internal editor";
+ConstString KEY_ORGANIC_TERRAIN = "Organic terrain";
+ConstString KEY_SEASONAL_TERRAIN = "Seasonal terrain";
 ConstString KEY_USE_TRILINEAR_FILTERING = "Use trilinear filtering";
 ConstString KEY_WEATHER_ATMOSPHERE_INTENSITY = "weather.atmosphereIntensity";
 ConstString KEY_WEATHER_PRECIPITATION_INTENSITY = "weather.precipitationIntensity";
@@ -703,6 +705,8 @@ void Configuration::CanvasSettings::read(const QSettings &conf)
     antialiasingSamples.set(conf.value(KEY_NUMBER_OF_ANTI_ALIASING_SAMPLES, 0).toInt());
     renderScale.set(std::clamp(conf.value(KEY_RENDER_SCALE, 100).toInt(), 25, 100));
     trilinearFiltering.set(conf.value(KEY_USE_TRILINEAR_FILTERING, true).toBool());
+    organicTerrain.set(conf.value(KEY_ORGANIC_TERRAIN, false).toBool());
+    seasonalTerrain.set(conf.value(KEY_SEASONAL_TERRAIN, true).toBool());
     advanced.use3D.set(conf.value(KEY_3D_CANVAS, false).toBool());
     advanced.autoTilt.set(conf.value(KEY_3D_AUTO_TILT, true).toBool());
     advanced.printPerfStats.set(conf.value(KEY_3D_PERFSTATS, IS_DEBUG_BUILD).toBool());
@@ -916,6 +920,8 @@ void Configuration::CanvasSettings::write(QSettings &conf) const
     conf.setValue(KEY_NUMBER_OF_ANTI_ALIASING_SAMPLES, antialiasingSamples.get());
     conf.setValue(KEY_RENDER_SCALE, renderScale.get());
     conf.setValue(KEY_USE_TRILINEAR_FILTERING, trilinearFiltering.get());
+    conf.setValue(KEY_ORGANIC_TERRAIN, organicTerrain.get());
+    conf.setValue(KEY_SEASONAL_TERRAIN, seasonalTerrain.get());
     conf.setValue(KEY_3D_CANVAS, advanced.use3D.get());
     conf.setValue(KEY_3D_AUTO_TILT, advanced.autoTilt.get());
     conf.setValue(KEY_3D_PERFSTATS, advanced.printPerfStats.get());

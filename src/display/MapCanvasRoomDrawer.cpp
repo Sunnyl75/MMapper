@@ -31,6 +31,7 @@
 #include "ConnectionLineBuilder.h"
 #include "MapCanvasData.h"
 #include "RoadIndex.h"
+#include "TerrainSprites.h"
 #include "mapcanvas.h" // hack, since we're now definining some of its symbols
 
 #include <cassert>
@@ -39,6 +40,7 @@
 #include <optional>
 #include <set>
 #include <stdexcept>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -55,6 +57,7 @@ struct NODISCARD VisitRoomOptions final
     SharedCanvasNamedColorOptions canvasColors;
     SharedNamedColorOptions colorSettings;
     bool drawNotMappedExits = false;
+    bool organicTerrain = false;
 };
 
 enum class NODISCARD StreamTypeEnum { OutFlow, InFlow };
@@ -73,6 +76,7 @@ NODISCARD static VisitRoomOptions getVisitRoomOptions()
     result.canvasColors = canvas.clone();
     result.colorSettings = config.colorSettings.clone();
     result.drawNotMappedExits = canvas.showUnmappedExits.get();
+    result.organicTerrain = canvas.organicTerrain.get();
     return result;
 }
 
@@ -697,6 +701,11 @@ struct NODISCARD LayerBatchData final
     MMTexArrayPosition white_pixel;
 
     RoomTexVector roomTerrains;
+    RoomTexVector forestTerrains;
+    std::vector<TerrainSpriteVert> organicGroundBase;
+    std::vector<TerrainSpriteVert> groundSprites;
+    std::vector<TerrainSpriteVert> terrainSprites;
+    MMTextureId spriteTexture = INVALID_MM_TEXTURE_ID;
     RoomTexVector roomTrails;
     RoomTexVector roomOverlays = RoomTexVector::sortedRoomTexVector();
     // REVISIT: Consider storing up/down door lines in a separate batch,
@@ -722,6 +731,14 @@ struct NODISCARD LayerBatchData final
         DECL_TIMER(t, "sort");
 
         roomOverlays.sortByTexture();
+        // Larger Y is north. Preserve this ordering across room boundaries and
+        // texture variants; all sprites share one array and one draw call.
+        std::sort(terrainSprites.begin(), terrainSprites.end(), [](const auto &a, const auto &b) {
+            const auto &pa = a.anchorSizeLayer;
+            const auto &pb = b.anchorSizeLayer;
+            return std::tie(pa.y, pa.x, pa.z, a.textureColor.x)
+                   > std::tie(pb.y, pb.x, pb.z, b.textureColor.x);
+        });
     }
 
     NODISCARD LayerMeshesIntermediate buildIntermediate() const
@@ -729,6 +746,28 @@ struct NODISCARD LayerBatchData final
         DECL_TIMER(t2, "LayerBatchData::buildIntermediate");
         LayerMeshesIntermediate meshes;
         meshes.terrain = ::createSortedTexturedMeshes("terrain", roomTerrains);
+        meshes.forestTerrain = ::createSortedTexturedMeshes("forestTerrain", forestTerrains);
+        // Stable random painter order lets forest and field fringes intermingle.
+        auto ground = groundSprites;
+        std::sort(ground.begin(), ground.end(), [](const auto &a, const auto &b) {
+            return std::tie(a.textureColor.z, a.anchorSizeLayer.y, a.anchorSizeLayer.x)
+                   < std::tie(b.textureColor.z, b.anchorSizeLayer.y, b.anchorSizeLayer.x);
+        });
+        if (!ground.empty()) {
+            meshes.groundSprites = [v = std::move(ground), texture = spriteTexture](OpenGL &gl) {
+                return gl.createTerrainSpriteBatch(v, texture);
+            };
+        }
+        if (!organicGroundBase.empty()) {
+            meshes.organicGroundBase = [v = organicGroundBase, texture = spriteTexture](OpenGL &gl) {
+                return gl.createTerrainSpriteBatch(v, texture);
+            };
+        }
+        if (!terrainSprites.empty()) {
+            meshes.terrainSprites = [v = terrainSprites, texture = spriteTexture](OpenGL &gl) {
+                return gl.createTerrainSpriteBatch(v, texture);
+            };
+        }
         meshes.trails = ::createSortedTexturedMeshes("trails", roomTrails);
         meshes.tints = ::createMeshFns("tints", roomTints, white_pixel);
         meshes.overlays = ::createSortedTexturedMeshes("overlays", roomOverlays);
@@ -756,14 +795,17 @@ private:
     LayerBatchData &m_data;
     const mctp::MapCanvasTexturesProxy &m_textures;
     const OptBounds &m_bounds;
+    const bool m_organicTerrain;
 
 public:
     explicit LayerBatchBuilder(LayerBatchData &data,
                                const mctp::MapCanvasTexturesProxy &textures,
-                               const OptBounds &bounds)
+                               const OptBounds &bounds,
+                               const bool organicTerrain)
         : m_data{data}
         , m_textures{textures}
         , m_bounds{bounds}
+        , m_organicTerrain{organicTerrain}
     {}
 
     ~LayerBatchBuilder() final;
@@ -783,7 +825,76 @@ private:
         }
 
         const auto pos = room.getPosition();
-        m_data.roomTerrains.emplace_back(pos, terrain);
+        const bool forest = room.getTerrainType() == RoomTerrainEnum::FOREST;
+        const bool field = room.getTerrainType() == RoomTerrainEnum::FIELD;
+        if (!m_organicTerrain || (!forest && !field)) {
+            m_data.roomTerrains.emplace_back(pos, terrain);
+        } else {
+            // Retain the originals for other elevations and distant zoom.
+            m_data.forestTerrains.emplace_back(pos, terrain);
+            const auto tint = room.getLightType() == RoomLightEnum::DARK
+                                  ? getTintColor(RoomTintEnum::DARK)
+                              : room.getSundeathType() == RoomSundeathEnum::NO_SUNDEATH
+                                  ? getTintColor(RoomTintEnum::NO_SUNDEATH)
+                                  : NamedColorEnum::DEFAULT;
+            const auto roadIndex = getRoadIndex(room.getRaw());
+            const auto hasTrailArm = [roadIndex](const RoadIndexMaskEnum direction) {
+                return (roadIndex & direction) != RoadIndexMaskEnum::NONE;
+            };
+            const terrain_sprites::TrailSegments trail{hasTrailArm(RoadIndexMaskEnum::NORTH),
+                                                       hasTrailArm(RoadIndexMaskEnum::SOUTH),
+                                                       hasTrailArm(RoadIndexMaskEnum::EAST),
+                                                       hasTrailArm(RoadIndexMaskEnum::WEST)};
+            const auto pack = m_textures.terrainSpritePacks.find(
+                room.getArea().getStdStringViewUtf8());
+            const int treeAtlas = pack == m_textures.terrainSpritePacks.end() ? 0 : pack->second;
+            m_data.spriteTexture = m_textures.terrain_sprites.front().array;
+            const auto add = [&](auto &batch,
+                                 const terrain_sprites::Sprite &sprite,
+                                 const int atlas,
+                                 const int flag,
+                                 const NamedColorEnum color) {
+                const auto tex = m_textures.terrain_sprites.at(static_cast<std::size_t>(atlas));
+                TerrainSpriteVert v;
+                v.anchorSizeLayer = glm::vec4{static_cast<float>(pos.x) + sprite.x,
+                                              static_cast<float>(pos.y) + sprite.y,
+                                              sprite.size,
+                                              static_cast<float>(pos.z)};
+                v.textureColor = glm::ivec4{tex.position * 16 + static_cast<int>(sprite.variant),
+                                            static_cast<int>(color),
+                                            static_cast<int>(sprite.transition),
+                                            flag};
+                batch.emplace_back(v);
+            };
+            // Shared seasonal underpaint guarantees coverage beneath transparent fringes.
+            add(m_data.organicGroundBase,
+                {0.5f, 0.5f, 1.f, 0, 32768},
+                0,
+                terrain_sprites::flags(terrain_sprites::Kind::BASE),
+                NamedColorEnum::DEFAULT);
+            const auto id = room.getIdExternal().asUint32(); // Saved map ID, never server ID.
+            for (const auto &sprite : terrain_sprites::ground(id)) {
+                add(m_data.groundSprites,
+                    sprite,
+                    m_textures.terrainGroundPacks[forest ? 0 : 1],
+                    terrain_sprites::flags(terrain_sprites::Kind::GROUND,
+                                           terrain_sprites::mix(sprite.transition) & 3u),
+                    tint);
+            }
+            for (const auto &sprite :
+                 forest ? terrain_sprites::forest(id) : terrain_sprites::field(id)) {
+                if (terrain_sprites::blocksTree(sprite, trail))
+                    continue;
+                if (field && (terrain_sprites::mix(sprite.transition) & 1u))
+                    continue;
+                add(m_data.terrainSprites,
+                    sprite,
+                    forest ? treeAtlas : m_textures.terrainGroundPacks[2],
+                    terrain_sprites::flags(forest ? terrain_sprites::Kind::TREE
+                                                  : terrain_sprites::Kind::FIELD_DETAIL),
+                    tint);
+            }
+        }
         m_data.roomLayerBoostQuads.emplace_back(pos, NamedColorEnum::DEFAULT);
     }
 
@@ -876,7 +987,7 @@ NODISCARD static LayerMeshesIntermediate generateLayerMeshes(
     DECL_TIMER(t, "generateLayerMeshes");
 
     LayerBatchData data{textures.white_pixel};
-    LayerBatchBuilder builder{data, textures, bounds};
+    LayerBatchBuilder builder{data, textures, bounds, visitRoomOptions.organicTerrain};
     visitRooms(rooms, textures, builder, visitRoomOptions);
 
     data.sort();
@@ -989,6 +1100,10 @@ LayerMeshes LayerMeshesIntermediate::getLayerMeshes(OpenGL &gl) const
     Resolver r{gl};
     LayerMeshes lm;
     lm.terrain = r.resolve(terrain);
+    lm.forestTerrain = r.resolve(forestTerrain);
+    lm.organicGroundBase = r.resolve(organicGroundBase);
+    lm.groundSprites = r.resolve(groundSprites);
+    lm.terrainSprites = r.resolve(terrainSprites);
     lm.trails = r.resolve(trails);
     lm.tints = r.resolve(tints);
     lm.overlays = r.resolve(overlays);
@@ -1004,13 +1119,19 @@ LayerMeshes LayerMeshesIntermediate::getLayerMeshes(OpenGL &gl) const
     return lm;
 }
 
-void LayerMeshes::render(const int thisLayer, const int focusedLayer)
+void LayerMeshes::render(const int thisLayer,
+                         const int focusedLayer,
+                         const bool drawTerrainSprites,
+                         const glm::vec4 &shadow,
+                         const float day)
 {
     // Disable texturing for this layer. We want to draw
     // all of the squares in white (using layer boost quads),
     // and then still draw the walls.
     const bool disableTextures = (thisLayer > focusedLayer)
                                  && !getConfig().canvas.drawUpperLayersTextured;
+
+    const bool organicSelected = drawTerrainSprites && thisLayer == focusedLayer;
 
     const GLRenderState defaultState;
     const GLRenderState less = defaultState.withDepthFunction(DepthFunctionEnum::LESS);
@@ -1035,6 +1156,10 @@ void LayerMeshes::render(const int thisLayer, const int focusedLayer)
             layerBoost.render(less_blended.withColor(layerWhite));
         } else {
             terrain.render(less_blended.withColor(color));
+            if (organicSelected)
+                organicGroundBase.render(less_blended.withColor(color).withTerrainDay(day));
+            else
+                forestTerrain.render(less_blended.withColor(color));
         }
     }
 
@@ -1044,6 +1169,22 @@ void LayerMeshes::render(const int thisLayer, const int focusedLayer)
         if (const UniqueMesh &mesh = tints[tint]) {
             mesh.render(equal_multiplied);
         }
+    }
+
+    if (!disableTextures && organicSelected) {
+        // Painter ordering handles transparency. With depth testing disabled,
+        // OpenGL also leaves the depth buffer untouched: canopy overhangs are
+        // not clipped to ground quads and cannot mask subsequent wall overlays.
+        // Other elevations retain the existing terrain and fading in this pilot.
+        const auto spriteState = defaultState.withBlend(BlendModeEnum::TRANSPARENCY)
+                                     .withColor(color)
+                                     .withTerrainDay(day);
+        groundSprites.render(spriteState);
+        if (shadow.z > 0.f) {
+            // Same static instance buffer and alpha images; one extra draw call.
+            terrainSprites.render(spriteState.withTerrainShadow(shadow));
+        }
+        terrainSprites.render(spriteState);
     }
 
     if (!disableTextures) {

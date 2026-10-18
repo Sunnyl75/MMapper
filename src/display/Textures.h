@@ -7,9 +7,13 @@
 #include "../map/mmapper2room.h"
 #include "../opengl/OpenGLTypes.h"
 #include "RoadIndex.h"
+#include "TerrainSprites.h"
 
 #include <functional>
+#include <map>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include <QOpenGLTexture>
 #include <QString>
@@ -160,8 +164,11 @@ struct NODISCARD road_texture_array : private texture_array<RoadIndexMaskEnum>
 using TextureArrayNESW = EnumIndexedArray<SharedMMTexture, ExitDirEnum, NUM_EXITS_NESW>;
 using TextureArrayNESWUD = EnumIndexedArray<SharedMMTexture, ExitDirEnum, NUM_EXITS_NESWUD>;
 
+using TerrainSpriteTextures = std::vector<SharedMMTexture>;
+
 // X(_Type, _Name)
 #define XFOREACH_MAPCANVAS_TEXTURES(X) \
+    X(TerrainSpriteTextures, terrain_sprites) \
     X(texture_array<RoomTerrainEnum>, terrain) \
     X(road_texture_array<RoadTagEnum::ROAD>, road) \
     X(road_texture_array<RoadTagEnum::TRAIL>, trail) \
@@ -196,7 +203,18 @@ struct NODISCARD MapCanvasTextures final
     XFOREACH_MAPCANVAS_TEXTURES(X_DECL)
 #undef X_DECL
 
+    std::array<int, 3> terrainGroundPacks{}; // Forest ground, field ground, field details.
+    std::map<std::string, int, std::less<>>
+        terrainSpritePacks; // Exact saved room areas -> first atlas.
+
 private:
+    template<typename Callback>
+    static void apply_callback(TerrainSpriteTextures &textures, Callback &&callback)
+    {
+        for (auto &texture : textures)
+            callback(texture);
+    }
+
     template<typename Callback>
     static void apply_callback(SharedMMTexture &tex, Callback &&callback)
     {
@@ -245,6 +263,12 @@ struct NODISCARD Proxy
 };
 
 template<>
+struct NODISCARD Proxy<TerrainSpriteTextures>
+{
+    using type = std::vector<MMTexArrayPosition>;
+};
+
+template<>
 struct NODISCARD Proxy<SharedMMTexture>
 {
     using type = MMTexArrayPosition;
@@ -256,6 +280,8 @@ using proxy_t = typename Proxy<T>::type;
 
 struct NODISCARD MapCanvasTexturesProxy final
 {
+    std::array<int, 3> terrainGroundPacks{};
+    std::map<std::string, int, std::less<>> terrainSpritePacks;
 #define X_DECL_PROXY(_Type, _Name) mctp::detail::proxy_t<_Type> _Name;
     XFOREACH_MAPCANVAS_TEXTURES(X_DECL_PROXY)
 #undef X_DECL_PROXY

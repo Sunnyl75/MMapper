@@ -57,6 +57,13 @@ struct NODISCARD ColoredTexVert final
     {}
 };
 
+// One instance per terrain sprite; no duplicated rectangle vertices.
+struct NODISCARD TerrainSpriteVert final
+{
+    glm::vec4 anchorSizeLayer{}; // anchor x/y, size in room units, map elevation
+    glm::ivec4 textureColor{};   // atlas tile, tint, stable seasonal timing, kind/rotation
+};
+
 struct NODISCARD RoomQuadTexVert final
 {
     // xyz = room coord, w = (colorId << 8 | tex_z)
@@ -249,10 +256,26 @@ struct NODISCARD GLRenderState final
         // glEnable(TEXTURE_2D), or glEnable(TEXTURE_3D)
         Textures textures;
         std::optional<float> pointSize;
+        float terrainDay = -1.f;      // Unknown/disabled uses summer artwork.
+        glm::vec4 terrainShadow{0.f}; // projection x/y, opacity, shadow-pass flag
     };
 
     Uniforms uniforms;
     std::optional<glm::mat4> mvp;
+
+    NODISCARD GLRenderState withTerrainDay(const float day) const
+    {
+        GLRenderState copy = *this;
+        copy.uniforms.terrainDay = day;
+        return copy;
+    }
+
+    NODISCARD GLRenderState withTerrainShadow(const glm::vec4 shadow) const
+    {
+        GLRenderState copy = *this;
+        copy.uniforms.terrainShadow = shadow;
+        return copy;
+    }
 
     NODISCARD GLRenderState withBlend(const BlendModeEnum new_blend) const
     {

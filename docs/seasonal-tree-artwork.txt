@@ -1,0 +1,12 @@
+Generated with the built-in image-generation tool, using the previous six-tree
+sheet as a style reference. Final source: terrain-trees-seasons.png.
+
+Prompt:
+Use case: lighting-weather. Project asset: transparent seasonal forest tree sprite sheet for MMapper, matching attached tree art style. Create ONE precisely aligned spritesheet, landscape 1536x1024 if possible, EXACTLY SIX equal columns and FOUR equal rows =24 square cells. No text labels, no grid, no backdrop or ground or shadows. Columns are six subtly different deciduous oak tree identities. Rows top to bottom: SPRING fresh pale green smaller emerging foliage; SUMMER full rich green foliage; AUTUMN orange gold russet foliage with some branches exposed; WINTER completely bare intricate brown branches, no leaves and NO snow. CRITICAL each column is the SAME tree through all four seasons: identical trunk contours, branch forks, branch positions, tree height, root/base point, perspective and scale. First establish the bare branching skeleton and repeat that EXACT skeleton vertically four times, then place seasonal leaves on that skeleton. Different columns may vary modestly. All24 trees individually isolated on genuinely transparent alpha, no haze. Same oblique illustrated game sprite style as reference. Each trunk base exactly at horizontal centre and 94% cell height, every tree fits entirely within its own cell with transparent margin on all sides. Fine enough winter branches to read when scaled to128 pixels. Tree bodies take about85% cell height. Lighting neutral, minimal baked highlights. No seasonal scene composition; this must be a machine-sliceable six-column four-row sprite atlas with matched skeletons.
+
+Acceptance note:
+These are prototype generated drawings. The paired trees retain recognisable
+forks and silhouettes, but generation cannot guarantee pixel-exact skeleton
+registration. Replace a full six-tree family with registered artist-prepared
+frames if exact geometry is required; renderer and pack formats already support
+this without any changes to room seeds.

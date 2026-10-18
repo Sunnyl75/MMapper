@@ -464,3 +464,15 @@ set_target_properties(
         COMPILE_FLAGS "${WARNING_FLAGS}"
 )
 add_test(NAME TestClient COMMAND TestClient)
+
+# Terrain placement has no Qt or GL dependency and can run without a display.
+add_executable(TestTerrainSprites TestTerrainSprites.cpp)
+target_link_libraries(TestTerrainSprites PRIVATE coverage_config)
+set_target_properties(TestTerrainSprites PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainSprites COMMAND TestTerrainSprites)
+
+# Pack selection and cell-local mipmaps use Qt images but require no GL/display.
+add_executable(TestTerrainSpritePacks TestTerrainSpritePacks.cpp ../src/display/TerrainSpritePacks.cpp)
+target_link_libraries(TestTerrainSpritePacks PRIVATE Qt6::Gui coverage_config)
+set_target_properties(TestTerrainSpritePacks PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainSpritePacks COMMAND TestTerrainSpritePacks)

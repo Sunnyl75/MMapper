@@ -92,6 +92,10 @@ public:
     void setZoom(float zoom) { m_core.setZoom(zoom); }
     NODISCARD float getRawZoom() const { return m_core.getRawZoom(); }
     NODISCARD float getTotalScaleFactor() const { return m_core.getTotalScaleFactor(); }
+    void setTerrainPreviewMoment(std::optional<MumeMoment> moment)
+    {
+        m_core.setTerrainPreviewMoment(std::move(moment));
+    }
 
     // Exposes the Qt-widgets-free core directly: ConnectionListener/Proxy
     // (see ../proxy/connectionlistener.h/proxy.h) only ever call methods

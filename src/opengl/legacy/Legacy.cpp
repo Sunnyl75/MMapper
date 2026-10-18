@@ -163,6 +163,17 @@ UniqueMesh Functions::createRoomQuadTexBatch(const View<RoomQuadTexVert> batch,
     return createTexturedMesh<RoomQuadTexMesh>(shared_from_this(), mode, batch, prog, texture);
 }
 
+UniqueMesh Functions::createTerrainSpriteBatch(const View<TerrainSpriteVert> batch,
+                                               const MMTextureId texture)
+{
+    const auto &prog = getShaderPrograms().getTerrainSpriteShader();
+    return createTexturedMesh<TerrainSpriteMesh>(shared_from_this(),
+                                                 DrawModeEnum::INSTANCED_QUADS,
+                                                 batch,
+                                                 prog,
+                                                 texture);
+}
+
 namespace {
 
 template<typename T>

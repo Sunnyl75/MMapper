@@ -1,0 +1,17 @@
+Generated with the built-in image-generation tool for this project, from the
+approved summer/autumn forest-to-field mock-up as style reference. The final
+art is recovered unchanged from the generated images, with genuine alpha.
+
+Shared ground prompt: Production transparent sprite atlas for a flat 2D fantasy
+map, exactly six columns and four rows on1536x1024. Rows spring, summer, autumn,
+winter, six subtle variants each. Same spatial motifs per column. Top-down flat
+patches with dense opaque centres and ragged transparent fragmenting fringes,
+intended to overlap for seamless coverage. No raised islands, sidewalls, trees,
+labels, grid or cast shadows. Neutral lighting and restrained comic-fantasy art.
+Forest: spring fresh moss and damp humus; summer olive moss and sparse leaves;
+autumn copper ochre leaf litter; winter broad off-white snow, a few twigs and
+leaf fragments. Field: spring fresh short grass; summer muted green/olive short
+grass; autumn straw/olive; winter dominant off-white snow with occasional straw.
+
+Final field-detail prompt:
+Production 2D game SPRITE SHEET, transparent alpha background. EXACT6 columns by4 rows on1536x1024canvas, 24 separate objects. CRITICAL design rule: SPRITES MUST BE SMALL, only40% CELL WIDTH and40% CELL HEIGHT, centred in their cells, with HUGE BLANK TRANSPARENT GUTTERS at least50px on all sides. Do not fill cells with big illustrations. One small meadow plant clump percell. Row1spring: small delicate white/yellow/blue wildflower clumps with thin grass. Row2summer: small green long-grass tussocks with a few seedheads. Row3autumn: those small grass tussocks in dry straw ochre. Row4winter: sparse dry grass stalks above a tiny snow patch. Six subtly different plant forms perrow, aligned same column identities. All clumps must fit in the central128x128 square of each256x256cell. Roots should be at75% down eachcell, not at the bottom. E.g firstrowplants betweeny64andy192, secondrowy320andy448, thirdrowy576andy704, fourthrowy832andy960. At least64px totally transparent space below eachclump before nextcell. Illustrated comic-fantasy map sprite style, goodcolourdetail, neutral lighting. No ground disks except tiny winter snow atroots, no cast shadows, no labels, no grid, no backgrounds or haze, real transparency. This is a small-object atlas with WIDE SPACING, not a packed page of large plants.
