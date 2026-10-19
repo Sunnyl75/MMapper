@@ -61,6 +61,22 @@ constexpr bool blocksTree(const Sprite &sprite, const TrailSegments &trail)
            || (trail.west && detail::nearTrailSegment(sprite.x, sprite.y, 0.f, 0.5f));
 }
 
+// Bits N,S,E,W,NE,NW,SE,SW describe which neighbouring cells may
+// receive overlap. A blocked diagonal also prevents leaking around a corner.
+constexpr bool fitsForeground(const Sprite &sprite, const uint32_t allowed)
+{
+    const float left = sprite.x - sprite.size * 0.5f;
+    const float right = sprite.x + sprite.size * 0.5f;
+    const float bottom = sprite.y - sprite.size * 0.06f;
+    const float top = sprite.y + sprite.size * 0.94f;
+    return !(top > 1.f && !(allowed & 1u)) && !(bottom < 0.f && !(allowed & 2u))
+           && !(right > 1.f && !(allowed & 4u)) && !(left < 0.f && !(allowed & 8u))
+           && !(right > 1.f && top > 1.f && !(allowed & 16u))
+           && !(left < 0.f && top > 1.f && !(allowed & 32u))
+           && !(right > 1.f && bottom < 0.f && !(allowed & 64u))
+           && !(left < 0.f && bottom < 0.f && !(allowed & 128u));
+}
+
 // Fixed unsigned arithmetic gives identical layouts on every supported platform.
 constexpr uint32_t mix(uint32_t x)
 {
@@ -69,6 +85,72 @@ constexpr uint32_t mix(uint32_t x)
     x ^= x >> 15;
     x *= 0x846ca68bu;
     return x ^ (x >> 16);
+}
+
+// Fit the full quad, including transparent margins, without resizing or
+// clipping the artwork. Recheck trails after calling this function.
+constexpr bool fitForeground(Sprite &sprite, const uint32_t walls, const uint32_t allowed)
+{
+    constexpr float gap = 0.025f;
+    const float minX = walls & 8u ? sprite.size * 0.5f + gap : 0.035f;
+    const float maxX = walls & 4u ? 1.f - sprite.size * 0.5f - gap : 0.965f;
+    const float minY = walls & 2u ? sprite.size * 0.06f + gap : 0.035f;
+    const float maxY = walls & 1u ? 1.f - sprite.size * 0.94f - gap : 0.965f;
+    if (minX > maxX || minY > maxY)
+        return false;
+    const auto clamp = [](float value, float low, float high) {
+        return value < low ? low : value > high ? high : value;
+    };
+    auto candidate = sprite;
+    candidate.x = clamp(candidate.x, minX, maxX);
+    candidate.y = clamp(candidate.y, minY, maxY);
+    if (fitsForeground(candidate, allowed)) {
+        sprite = candidate;
+        return true;
+    }
+    // Stable alternatives handle blocked diagonal corners without collecting
+    // every displaced tree at the room centre. No RNG or state is retained.
+    for (uint32_t i = 0; i < 12; ++i) {
+        const auto hash = mix(sprite.transition ^ mix(i + 0x57414c4cu));
+        candidate.x = minX + (maxX - minX) * static_cast<float>(hash & 65535u) / 65535.f;
+        candidate.y = minY + (maxY - minY) * static_cast<float>(hash >> 16) / 65535.f;
+        if (fitsForeground(candidate, allowed)) {
+            sprite = candidate;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Preserve full foreground silhouettes by reducing only when relocation at
+// the authored size fails. Shared by mountains and hills, not a new RNG stream.
+constexpr bool fitForegroundScaled(Sprite &sprite, const uint32_t walls, const uint32_t allowed)
+{
+    auto candidate = sprite;
+    if (fitForeground(candidate, walls, allowed)) {
+        sprite = candidate;
+        return true;
+    }
+    const auto original = sprite;
+    float low = original.size < 0.45f ? original.size : 0.45f;
+    float high = original.size;
+    candidate = original;
+    candidate.size = low;
+    if (!fitForeground(candidate, walls, allowed))
+        return false;
+    auto best = candidate;
+    for (unsigned step = 0; step < 10; ++step) {
+        const float middle = (low + high) * 0.5f;
+        candidate = original;
+        candidate.size = middle;
+        if (fitForeground(candidate, walls, allowed)) {
+            low = middle;
+            best = candidate;
+        } else
+            high = middle;
+    }
+    sprite = best;
+    return true;
 }
 
 constexpr std::array<Sprite, SPRITES_PER_ROOM> forest(const uint32_t roomId)
@@ -120,6 +202,21 @@ constexpr std::array<Sprite, SPRITES_PER_ROOM> ground(const uint32_t roomId)
     }
     return sprites;
 }
+// Broad independently seeded patches remove any per-room repeating water motif.
+constexpr std::array<Sprite, 6> water(const uint32_t roomId)
+{
+    const auto anchors = forest(roomId ^ 0x57415452u);
+    std::array<Sprite, 6> result{};
+    for (uint32_t i = 0; i < result.size(); ++i) {
+        auto sprite = anchors[i];
+        const auto hash = mix(roomId ^ mix(i + 0x52495050u));
+        sprite.size = 1.25f + 0.4f * static_cast<float>(hash & 255u) / 256.f;
+        sprite.variant = (i + mix(roomId)) % NUM_VARIANTS;
+        result[i] = sprite;
+    }
+    return result;
+}
+
 constexpr std::array<Sprite, SPRITES_PER_ROOM> field(const uint32_t roomId)
 {
     auto sprites = forest(roomId ^ 0x4649454cu);

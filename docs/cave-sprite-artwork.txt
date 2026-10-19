@@ -1,0 +1,22 @@
+Underground artwork — generated with the built-in image tool, October 2026
+
+terrain-tunnel-ground.png: 24 different warm limestone dust/gravel/rubble patches.
+terrain-cavern-ground.png: 24 cool pearl-grey slabs/cracks/mineral seam patches.
+terrain-cave-details.png: 18 small stones and 6 bone fragments.
+
+All are 1536x1024 RGBA, six columns and four rows, genuine alpha edges. The four
+rows are variants, NOT seasons. Each occupies two existing 4x4 atlas pages after
+normal row-alignment import. All-season instances keep their chosen image.
+
+Prompt design for both floors: Bree Legends fantasy comic map, broad irregular
+opaque-centred patches with feathered alpha margins, simplified medium grey ink,
+mid-light stone hues readable under a dark overlay, no enclosing walls, room
+outlines, doors, cave scenes, vegetation, snow, deep black shadows or text.
+Tunnels: worn stone and compact angular gravel, lengthwise compressed floor
+grain and seams. Caverns: broad open limestone slabs, widely spaced branching
+cracks and cream mineral veins. Distinct silhouettes and layouts in all cells.
+
+Props prompt: isolated small low-relief limestone chips, pebbles, mineral shards,
+then six bones (rib, long-bone fragments, animal skull, vertebra, jaw). Cream and
+light grey, clear simple comic contours, shallow grounded shade, alpha outside,
+consistent oblique map camera, no scenery or floor patches.

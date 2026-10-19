@@ -37,6 +37,8 @@
 #include <vector>
 
 #include <QGestureEvent>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMessageLogContext>
 #include <QOpenGLDebugMessage>
 #include <QSize>
@@ -100,6 +102,26 @@ MapCanvas::MapCanvas(MapData &mapData,
                                                   : FrameManager::AnimationStatusEnum::Stop;
     });
 
+    m_observer.sig2_connected.connect(m_lifetime, [this]() {
+        m_terrainDoors.clear();
+        requestForceUpdateMeshes();
+    });
+    m_observer.sig2_sentToUserGmcp.connect(m_lifetime, [this](const GmcpMessage &message) {
+        if (message.isEventMoved() || message.isCoreGoodbye()) {
+            if (m_terrainDoors.serverRoom != 0) {
+                m_terrainDoors.clear();
+                requestForceUpdateMeshes();
+            }
+            return;
+        }
+        if ((!message.isRoomInfo() && !message.isRoomUpdateExits()) || !message.getJson())
+            return;
+        const auto document = QJsonDocument::fromJson(message.getJson()->toQString().toUtf8());
+        if (document.isObject()
+            && m_terrainDoors.observe(document.object(), message.isRoomUpdateExits()))
+            requestForceUpdateMeshes();
+    });
+
     m_observer.sig2_tick.connect(m_lifetime, [this](const MumeMoment &moment) {
         glm::vec4 next{0.f};
         float nextDay = -1.f;
@@ -112,7 +134,8 @@ MapCanvas::MapCanvas(MapData &mapData,
                       + static_cast<float>(terrainMoment.minute) / 1440.f;
             const auto dawnDusk = MumeClock::getDawnDusk(terrainMoment.month);
             const auto light = terrain_lighting::calculate(
-                static_cast<double>(terrainMoment.hour) + static_cast<double>(terrainMoment.minute) / 60.0,
+                static_cast<double>(terrainMoment.hour)
+                    + static_cast<double>(terrainMoment.minute) / 60.0,
                 dawnDusk.dawnHour,
                 dawnDusk.duskHour,
                 static_cast<double>(terrainMoment.moonZenithMinutes()) / 60.0,
@@ -141,14 +164,16 @@ void MapCanvas::setTerrainPreviewMoment(std::optional<MumeMoment> moment)
     if (m_terrainPreviewMoment.has_value()) {
         const MumeMoment &preview = *m_terrainPreviewMoment;
         const auto dawnDusk = MumeClock::getDawnDusk(preview.month);
-        const auto light = terrain_lighting::calculate(
-            static_cast<double>(preview.hour) + static_cast<double>(preview.minute) / 60.0,
-            dawnDusk.dawnHour,
-            dawnDusk.duskHour,
-            static_cast<double>(preview.moonZenithMinutes()) / 60.0,
-            static_cast<double>(preview.moonLevel()) / 12.0,
-            preview.moonVisibility() != MumeMoonVisibilityEnum::INVISIBLE
-                && !preview.isMoonBelowHorizon());
+        const auto light
+            = terrain_lighting::calculate(static_cast<double>(preview.hour)
+                                              + static_cast<double>(preview.minute) / 60.0,
+                                          dawnDusk.dawnHour,
+                                          dawnDusk.duskHour,
+                                          static_cast<double>(preview.moonZenithMinutes()) / 60.0,
+                                          static_cast<double>(preview.moonLevel()) / 12.0,
+                                          preview.moonVisibility()
+                                                  != MumeMoonVisibilityEnum::INVISIBLE
+                                              && !preview.isMoonBelowHorizon());
         m_terrainShadow = glm::vec4{light.x, light.y, light.opacity, 1.f};
         m_terrainDay = static_cast<float>(preview.dayOfYear())
                        + static_cast<float>(preview.hour) / 24.f

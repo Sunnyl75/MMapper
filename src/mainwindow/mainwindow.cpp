@@ -375,8 +375,7 @@ MainWindow::MainWindow()
     auto *const terrainClockDock = new QDockWidget(tr("Terrain Preview Clock"), this);
     terrainClockDock->setObjectName("TerrainPreviewClockDock");
     terrainClockDock->setAllowedAreas(Qt::TopDockWidgetArea | Qt::BottomDockWidgetArea);
-    terrainClockDock->setFeatures(QDockWidget::DockWidgetMovable
-                                  | QDockWidget::DockWidgetFloatable
+    terrainClockDock->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable
                                   | QDockWidget::DockWidgetClosable);
     auto *const terrainClockWidget = new QWidget(terrainClockDock);
     auto *const terrainClockLayout = new QFormLayout(terrainClockWidget);
@@ -396,6 +395,10 @@ MainWindow::MainWindow()
     hour->setRange(1, MUME_HOURS_PER_DAY);
     hour->setValue(12);
     minute->setRange(0, MUME_MINUTES_PER_HOUR - 1);
+    // Independent cyclic controls retain the checkpoint's 1-based display.
+    // Timed advancement already carries through hours/days/months via MumeMoment.
+    for (QSpinBox *const control : {month, day, hour, minute})
+        control->setWrapping(true);
     speed->addItem(tr("Paused"), 0);
     speed->addItem(tr("1 game minute / second"), 1);
     speed->addItem(tr("10 game minutes / second"), 10);
@@ -414,8 +417,11 @@ MainWindow::MainWindow()
 
     const auto applyPreviewTime = [this, previewEnabled, year, month, day, hour, minute]() {
         if (previewEnabled->isChecked()) {
-            getCanvas()->setTerrainPreviewMoment(
-                MumeMoment{year->value(), month->value() - 1, day->value() - 1, hour->value() - 1, minute->value()});
+            getCanvas()->setTerrainPreviewMoment(MumeMoment{year->value(),
+                                                            month->value() - 1,
+                                                            day->value() - 1,
+                                                            hour->value() - 1,
+                                                            minute->value()});
         } else {
             getCanvas()->setTerrainPreviewMoment(std::nullopt);
         }
@@ -433,7 +439,11 @@ MainWindow::MainWindow()
     connect(previewTimer, &QTimer::timeout, this, [=]() {
         if (!previewEnabled->isChecked() || speed->currentData().toInt() == 0)
             return;
-        const MumeMoment current{year->value(), month->value() - 1, day->value() - 1, hour->value() - 1, minute->value()};
+        const MumeMoment current{year->value(),
+                                 month->value() - 1,
+                                 day->value() - 1,
+                                 hour->value() - 1,
+                                 minute->value()};
         const auto advanceMinutes = static_cast<int64_t>(speed->currentData().toInt());
         const MumeMoment next = MumeMoment::sinceMumeEpoch(current.toSeconds() + advanceMinutes);
         const QSignalBlocker blockYear{year};

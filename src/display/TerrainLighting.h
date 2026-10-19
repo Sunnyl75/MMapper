@@ -9,7 +9,7 @@
 // An artistic sky model tied to MUME's clock, not Earth's calendar or time zone.
 namespace terrain_lighting {
 inline constexpr double LATITUDE = 52.5 * std::numbers::pi / 180.0;
-inline constexpr double MAX_LENGTH = 1.0;
+inline constexpr double MAX_LENGTH = 3.0;
 
 struct Shadow final
 {
@@ -51,7 +51,7 @@ inline Shadow sun(const double hour, const double dawn, const double dusk)
     const double sunsetAngle = (dusk - dawn) * std::numbers::pi / 24.0;
     const double declination = std::atan(-std::cos(sunsetAngle) / std::tan(LATITUDE));
     const double angle = (hour - (dawn + dusk) / 2.0) * std::numbers::pi / 12.0;
-    return detail::project(angle, declination, 0.18);
+    return detail::project(angle, declination, 0.26);
 }
 
 inline Shadow calculate(const double hour,
@@ -74,7 +74,7 @@ inline Shadow calculate(const double hour,
     // MMapper's moon rises six game hours before zenith and sets six after;
     // zero declination preserves that existing twelve-hour sky arc.
     const double light = std::clamp(moonLight, 0.0, 1.0);
-    auto result = detail::project(offset * std::numbers::pi / 12.0, 0.0, 0.045 * light * light);
+    auto result = detail::project(offset * std::numbers::pi / 12.0, 0.0, 0.07 * light * light);
     const double nightHour = hour < dawn ? hour + 24.0 : hour;
     const double twilight = std::min(nightHour - dusk, dawn + 24.0 - nightHour);
     result.opacity *= static_cast<float>(std::clamp(twilight / 0.5, 0.0, 1.0));

@@ -31,7 +31,10 @@
 #include "ConnectionLineBuilder.h"
 #include "MapCanvasData.h"
 #include "RoadIndex.h"
+#include "TerrainEdges.h"
+#include "TerrainMaterials.h"
 #include "TerrainSprites.h"
+#include "TerrainWalls.h"
 #include "mapcanvas.h" // hack, since we're now definining some of its symbols
 
 #include <cassert>
@@ -58,6 +61,7 @@ struct NODISCARD VisitRoomOptions final
     SharedNamedColorOptions colorSettings;
     bool drawNotMappedExits = false;
     bool organicTerrain = false;
+    terrain_doors::Observation doors;
 };
 
 enum class NODISCARD StreamTypeEnum { OutFlow, InFlow };
@@ -705,12 +709,21 @@ struct NODISCARD LayerBatchData final
     std::vector<TerrainSpriteVert> organicGroundBase;
     std::vector<TerrainSpriteVert> groundSprites;
     std::vector<TerrainSpriteVert> terrainSprites;
+    std::vector<TerrainSpriteVert> terrainEdges;
+    std::vector<TerrainSpriteVert> terrainWalls;
+    std::vector<TerrainSpriteVert> roofCaps;
+    std::vector<TerrainSpriteVert> doorSprites;
+    std::vector<TerrainSpriteVert> warningSprites;
+    std::vector<TerrainSpriteVert> wallShadows;
+    std::vector<TerrainSpriteVert> wallGrime;
     MMTextureId spriteTexture = INVALID_MM_TEXTURE_ID;
     RoomTexVector roomTrails;
+    RoomTexVector legacyTrails;
     RoomTexVector roomOverlays = RoomTexVector::sortedRoomTexVector();
     // REVISIT: Consider storing up/down door lines in a separate batch,
     // so they can be rendered thicker.
     ColoredRoomTexVector doors;
+    ColoredRoomTexVector legacyDoorLines;
     ColoredRoomTexVector solidWallLines;
     ColoredRoomTexVector dottedWallLines;
     ColoredRoomTexVector roomUpDownExits;
@@ -748,8 +761,18 @@ struct NODISCARD LayerBatchData final
         meshes.terrain = ::createSortedTexturedMeshes("terrain", roomTerrains);
         meshes.forestTerrain = ::createSortedTexturedMeshes("forestTerrain", forestTerrains);
         // Stable random painter order lets forest and field fringes intermingle.
+        // Water is the bottom material even when room iteration order changes.
+        auto bases = organicGroundBase;
+        std::stable_sort(bases.begin(), bases.end(), [](const auto &a, const auto &b) {
+            return (a.textureColor.w == terrain_materials::WATER_KIND)
+                   > (b.textureColor.w == terrain_materials::WATER_KIND);
+        });
         auto ground = groundSprites;
         std::sort(ground.begin(), ground.end(), [](const auto &a, const auto &b) {
+            const bool aWater = (a.textureColor.w & 15) == terrain_materials::WATER_PATCH_KIND;
+            const bool bWater = (b.textureColor.w & 15) == terrain_materials::WATER_PATCH_KIND;
+            if (aWater != bWater)
+                return aWater;
             return std::tie(a.textureColor.z, a.anchorSizeLayer.y, a.anchorSizeLayer.x)
                    < std::tie(b.textureColor.z, b.anchorSizeLayer.y, b.anchorSizeLayer.x);
         });
@@ -759,7 +782,7 @@ struct NODISCARD LayerBatchData final
             };
         }
         if (!organicGroundBase.empty()) {
-            meshes.organicGroundBase = [v = organicGroundBase, texture = spriteTexture](OpenGL &gl) {
+            meshes.organicGroundBase = [v = std::move(bases), texture = spriteTexture](OpenGL &gl) {
                 return gl.createTerrainSpriteBatch(v, texture);
             };
         }
@@ -769,9 +792,47 @@ struct NODISCARD LayerBatchData final
             };
         }
         meshes.trails = ::createSortedTexturedMeshes("trails", roomTrails);
+        meshes.legacyTrails = ::createSortedTexturedMeshes("legacyTrails", legacyTrails);
+        if (!terrainEdges.empty()) {
+            meshes.terrainEdges = [v = terrainEdges, texture = spriteTexture](OpenGL &gl) {
+                return gl.createTerrainSpriteBatch(v, texture);
+            };
+        }
+        if (!doorSprites.empty()) {
+            meshes.doorSprites = [v = doorSprites, texture = spriteTexture](OpenGL &gl) {
+                return gl.createTerrainSpriteBatch(v, texture);
+            };
+        }
+        if (!warningSprites.empty()) {
+            meshes.warningSprites = [v = warningSprites, texture = spriteTexture](OpenGL &gl) {
+                return gl.createTerrainSpriteBatch(v, texture);
+            };
+        }
+        if (!terrainWalls.empty()) {
+            meshes.terrainWalls = [v = terrainWalls, texture = spriteTexture](OpenGL &gl) {
+                return gl.createTerrainSpriteBatch(v, texture);
+            };
+        }
+        if (!roofCaps.empty()) {
+            meshes.roofCaps = [v = roofCaps, texture = spriteTexture](OpenGL &gl) {
+                return gl.createTerrainSpriteBatch(v, texture);
+            };
+        }
+        if (!wallShadows.empty()) {
+            meshes.wallShadows = [v = wallShadows, texture = spriteTexture](OpenGL &gl) {
+                return gl.createTerrainSpriteBatch(v, texture);
+            };
+        }
+        if (!wallGrime.empty()) {
+            meshes.wallGrime = [v = wallGrime, texture = spriteTexture](OpenGL &gl) {
+                return gl.createTerrainSpriteBatch(v, texture);
+            };
+        }
         meshes.tints = ::createMeshFns("tints", roomTints, white_pixel);
         meshes.overlays = ::createSortedTexturedMeshes("overlays", roomOverlays);
         meshes.doors = ::createSortedColoredTexturedMeshes("doors", doors);
+        meshes.legacyDoorLines = ::createSortedColoredTexturedMeshes("legacyDoorLines",
+                                                                     legacyDoorLines);
         meshes.walls = ::createSortedColoredTexturedMeshes("solidWalls", solidWallLines);
         meshes.dottedWalls = ::createSortedColoredTexturedMeshes("dottedWalls", dottedWallLines);
         meshes.upDownExits = ::createSortedColoredTexturedMeshes("upDownExits", roomUpDownExits);
@@ -796,17 +857,327 @@ private:
     const mctp::MapCanvasTexturesProxy &m_textures;
     const OptBounds &m_bounds;
     const bool m_organicTerrain;
+    std::unordered_map<Coordinate, terrain_edges::Sector> m_sectors;
+    std::unordered_map<Coordinate, uint32_t> m_wallMasks;
+    std::unordered_map<Coordinate, uint32_t> m_buildingWalls;
+    std::unordered_map<Coordinate, const RoomHandle *> m_roomHandles;
+    terrain_doors::Observation m_doors;
+
+    NODISCARD std::optional<terrain_materials::Family> wallFamily(const RoomTerrainEnum terrain,
+                                                                  const Coordinate &pos,
+                                                                  const ExitDirEnum dir) const
+    {
+        const auto across = m_sectors.find(pos + exitDir(dir));
+        return terrain_walls::family(terrain,
+                                     across != m_sectors.end()
+                                         && across->second == terrain_edges::Sector::INDOORS,
+                                     across != m_sectors.end()
+                                         && across->second == terrain_edges::Sector::URBAN);
+    }
+
+    NODISCARD uint32_t wallMask(const Coordinate &pos) const
+    {
+        const auto own = m_wallMasks.find(pos);
+        uint32_t mask = own == m_wallMasks.end() ? 0u : own->second;
+        for (const auto dir : ALL_EXITS_NESW) {
+            const auto next = m_wallMasks.find(pos + exitDir(dir));
+            const auto index = static_cast<uint32_t>(dir);
+            if (next != m_wallMasks.end() && (next->second & (1u << (index ^ 1u))))
+                mask |= 1u << index;
+        }
+        return mask;
+    }
+
+    NODISCARD unsigned wallEnds(const RoomTerrainEnum terrain,
+                                const Coordinate &pos,
+                                const ExitDirEnum dir) const
+    {
+        const auto face = wallFamily(terrain, pos, dir);
+        unsigned continuation = 0;
+        for (const auto along : terrain_walls::alongDirections(static_cast<unsigned>(dir))) {
+            const auto next = pos + exitDir(static_cast<ExitDirEnum>(along));
+            const auto sector = m_sectors.find(next);
+            const auto ownSector = m_sectors.find(pos);
+            if ((wallMask(next) & (1u << static_cast<unsigned>(dir))) && sector != m_sectors.end()
+                && ownSector != m_sectors.end() && sector->second == ownSector->second
+                && wallFamily(terrain, next, dir) == face)
+                continuation |= 1u << along;
+        }
+        return terrain_walls::ends(static_cast<unsigned>(dir), continuation);
+    }
+
+    NODISCARD uint32_t overlapMask(const Coordinate &pos) const
+    {
+        const auto walls = wallMask(pos);
+        uint32_t allowed = (~walls) & 15u;
+        // Both routes around a diagonal corner must be clear. This prevents
+        // a large patch or canopy bypassing a wall just beyond its source room.
+        for (uint32_t i = 0; i < 4; ++i) {
+            const uint32_t vertical = i < 2 ? 0u : 1u;
+            const uint32_t horizontal = (i & 1u) == 0 ? 2u : 3u;
+            const auto v = static_cast<ExitDirEnum>(vertical);
+            const auto h = static_cast<ExitDirEnum>(horizontal);
+            if (!(walls & ((1u << vertical) | (1u << horizontal)))
+                && !(wallMask(pos + exitDir(v)) & (1u << horizontal))
+                && !(wallMask(pos + exitDir(h)) & (1u << vertical)))
+                allowed |= 1u << (i + 4u);
+        }
+        return allowed;
+    }
+
+    NODISCARD static terrain_edges::Sector edgeSector(const RoomTerrainEnum terrain)
+    {
+        using S = terrain_edges::Sector;
+        switch (terrain) {
+        case RoomTerrainEnum::FIELD:
+            return S::FIELD;
+        case RoomTerrainEnum::FOREST:
+            return S::FOREST;
+        case RoomTerrainEnum::HILLS:
+            return S::HILLS;
+        case RoomTerrainEnum::MOUNTAINS:
+            return S::MOUNTAINS;
+        case RoomTerrainEnum::SHALLOW:
+            return S::MARSH;
+        case RoomTerrainEnum::WATER:
+        case RoomTerrainEnum::RAPIDS:
+            return S::WATER;
+        case RoomTerrainEnum::UNDERWATER:
+            return S::UNDERWATER;
+        case RoomTerrainEnum::ROAD:
+            return S::ROAD;
+        case RoomTerrainEnum::CITY:
+            return S::URBAN;
+        case RoomTerrainEnum::INDOORS:
+            return S::INDOORS;
+        case RoomTerrainEnum::TUNNEL:
+            return S::TUNNEL;
+        case RoomTerrainEnum::CAVERN:
+            return S::CAVERN;
+        case RoomTerrainEnum::BRUSH:
+            return S::BRUSH;
+        default:
+            return S::UNKNOWN;
+        }
+    }
+
+    NODISCARD uint32_t routeMask(const RoomHandle &room) const
+    {
+        uint32_t mask = static_cast<uint32_t>(getRoadIndex(room.getRaw()));
+        if (room.getTerrainType() != RoomTerrainEnum::ROAD)
+            return mask;
+        const auto walls = wallMask(room.getPosition());
+        for (const auto dir : ALL_EXITS_NESW) {
+            const auto side = static_cast<unsigned>(dir);
+            const auto next = m_roomHandles.find(room.getPosition() + exitDir(dir));
+            if ((walls & (1u << side)) || next == m_roomHandles.end())
+                continue;
+            const auto &peer = *next->second;
+            if (peer.getTerrainType() == RoomTerrainEnum::ROAD
+                || peer.getTerrainType() == RoomTerrainEnum::CITY)
+                continue;
+            const auto peerMask = static_cast<uint32_t>(getRoadIndex(peer.getRaw()));
+            if (peerMask & (1u << (side ^ 1u)))
+                mask |= 1u << side;
+        }
+        return mask;
+    }
+
+    void addWarning(const RoomHandle &room)
+    {
+        using F = terrain_materials::Family;
+        if (!m_organicTerrain || !room.getLoadFlags().contains(RoomLoadFlagEnum::DEATHTRAP)
+            || !m_textures.terrainWallPacks.at(static_cast<std::size_t>(F::DEATH_TRAP)))
+            return;
+        const auto tex = m_textures.terrain_sprites.at(static_cast<std::size_t>(
+            terrain_materials::atlas(m_textures.terrainGroundPacks[0], F::DEATH_TRAP)));
+        const auto pos = room.getPosition();
+        TerrainSpriteVert warning;
+        warning.anchorSizeLayer = {static_cast<float>(pos.x) + 0.5f,
+                                   static_cast<float>(pos.y) + 0.5f,
+                                   1.f,
+                                   static_cast<float>(pos.z)};
+        warning.textureColor = {tex.position * 16,
+                                static_cast<int>(NamedColorEnum::DEFAULT),
+                                0,
+                                terrain_materials::WARNING_KIND | terrain_materials::ALL_SEASON
+                                    | terrain_materials::NO_SKY_SHADOW};
+        m_data.spriteTexture = tex.array;
+        m_data.warningSprites.emplace_back(warning);
+    }
+
+    void addDoor(const RoomHandle &room, const ExitDirEnum dir)
+    {
+        using F = terrain_materials::Family;
+        const auto side = static_cast<unsigned>(dir);
+        const auto back = static_cast<ExitDirEnum>(side ^ 1u);
+        const auto peerIt = m_roomHandles.find(room.getPosition() + exitDir(dir));
+        const RoomHandle *peer = peerIt == m_roomHandles.end() ? nullptr : peerIt->second;
+        const auto &exit = room.getExit(dir);
+        const bool paired = peer && peer->getExit(back).getExitFlags().isDoor()
+                            && exit.getOutgoingSet().contains(peer->getId())
+                            && peer->getExit(back).getOutgoingSet().contains(room.getId());
+        const auto id = room.getIdExternal().asUint32();
+        const auto variant = terrain_doors::variant(id,
+                                                    paired ? peer->getIdExternal().asUint32() : 0u,
+                                                    side < 2u ? 0u : 1u);
+        auto state = terrain_doors::State::UNKNOWN;
+        if (m_doors.serverRoom != 0 && room.getServerId().asUint32() == m_doors.serverRoom)
+            state = m_doors.states[side];
+        else if (paired && m_doors.serverRoom != 0
+                 && peer->getServerId().asUint32() == m_doors.serverRoom)
+            state = m_doors.states[side ^ 1u];
+        const auto tex = m_textures.terrain_sprites.at(static_cast<std::size_t>(
+            terrain_materials::atlas(m_textures.terrainGroundPacks[0], F::DOOR)));
+        const auto pos = room.getPosition();
+        TerrainSpriteVert door;
+        door.anchorSizeLayer = {static_cast<float>(pos.x) + 0.5f,
+                                static_cast<float>(pos.y) + 0.5f,
+                                1.f,
+                                static_cast<float>(pos.z)};
+        int flags = terrain_materials::WALL_KIND | terrain_materials::ALL_SEASON
+                    | terrain_materials::NO_SKY_SHADOW | terrain_materials::DOOR_OVERLAY
+                    | static_cast<int>(terrain_walls::rotation(side) << 4u);
+        if (paired && (side == 1u || side == 3u))
+            flags |= terrain_materials::DOOR_OTHER_SIDE;
+        if (state != terrain_doors::State::UNKNOWN)
+            flags |= terrain_materials::DOOR_KNOWN;
+        door.textureColor = {tex.position * 16 + static_cast<int>(variant)
+                                 + (state == terrain_doors::State::OPEN ? 6 : 0),
+                             static_cast<int>(NamedColorEnum::DEFAULT),
+                             0,
+                             flags};
+        m_data.spriteTexture = tex.array;
+        m_data.doorSprites.emplace_back(door);
+    }
+
+    NODISCARD bool hasOrganicRoute(const RoomHandle &room) const
+    {
+        const auto terrain = room.getTerrainType();
+        return m_organicTerrain && routeMask(room) != 0 && terrain != RoomTerrainEnum::INDOORS
+               && terrain != RoomTerrainEnum::CITY && terrain != RoomTerrainEnum::UNDERWATER;
+    }
+
+    void addTerrainEdges(const RoomHandle &room)
+    {
+        if (!m_organicTerrain)
+            return;
+        const auto terrain = room.getTerrainType();
+        const bool route = hasOrganicRoute(room);
+        if (!route && terrain != RoomTerrainEnum::ROAD)
+            return;
+        const auto pos = room.getPosition();
+        terrain_edges::Neighbours neighbours{};
+        for (const auto dir : ALL_EXITS_NESW) {
+            const auto next = m_sectors.find(pos + exitDir(dir));
+            if (next != m_sectors.end())
+                neighbours[static_cast<size_t>(dir)] = next->second;
+        }
+        const auto tint = room.getLightType() == RoomLightEnum::DARK
+                              ? getTintColor(RoomTintEnum::DARK)
+                          : room.getSundeathType() == RoomSundeathEnum::NO_SUNDEATH
+                              ? getTintColor(RoomTintEnum::NO_SUNDEATH)
+                              : NamedColorEnum::DEFAULT;
+        TerrainSpriteVert v;
+        v.anchorSizeLayer = glm::vec4{static_cast<float>(pos.x) + 0.5f,
+                                      static_cast<float>(pos.y) + 0.5f,
+                                      1.f,
+                                      static_cast<float>(pos.z)};
+        const auto first = m_textures.terrain_sprites
+                               .at(static_cast<std::size_t>(m_textures.terrainGroundPacks[0]))
+                               .position
+                           * 16;
+        v.textureColor
+            = glm::ivec4{static_cast<int>(
+                             terrain_edges::withMaterials(terrain_edges::pack(edgeSector(terrain),
+                                                                              neighbours),
+                                                          static_cast<uint32_t>(first))),
+                         static_cast<int>(tint),
+                         static_cast<int>(terrain_edges::seed(room.getIdExternal().asUint32())
+                                          | (wallMask(pos) << 24u)),
+                         0};
+        m_data.spriteTexture = m_textures.terrain_sprites.front().array;
+        const bool road = terrain == RoomTerrainEnum::ROAD;
+        const auto mask = routeMask(room);
+        v.textureColor.w = terrain_edges::flags(road ? terrain_edges::ROAD_BASE
+                                                     : terrain_edges::TRAIL,
+                                                mask);
+        if (terrain == RoomTerrainEnum::TUNNEL || terrain == RoomTerrainEnum::CAVERN)
+            v.textureColor.w |= terrain_materials::ALL_SEASON;
+        if (road) {
+            // Composite road and undercoat before neighbouring ground/canopies.
+            // The normal tint pass applies once to the complete base material.
+            v.textureColor.y = static_cast<int>(NamedColorEnum::DEFAULT);
+            m_data.organicGroundBase.emplace_back(v);
+            uint32_t joins = 0;
+            for (unsigned side = 0; side < 4; ++side) {
+                const auto dir = static_cast<ExitDirEnum>(side);
+                const auto peer = m_roomHandles.find(pos + exitDir(dir));
+                if (!(mask & (1u << side)) || (wallMask(pos) & (1u << side))
+                    || peer == m_roomHandles.end())
+                    continue;
+                if (peer->second->getTerrainType() != RoomTerrainEnum::ROAD
+                    && peer->second->getTerrainType() != RoomTerrainEnum::CITY
+                    && (static_cast<uint32_t>(getRoadIndex(peer->second->getRaw()))
+                        & (1u << (side ^ 1u))))
+                    joins |= 1u << side;
+            }
+            if (joins != 0) {
+                auto apron = v;
+                apron.textureColor.w = terrain_edges::flags(terrain_edges::ROAD, joins)
+                                       | terrain_materials::ROUTE_APRON;
+                m_data.terrainEdges.emplace_back(apron);
+            }
+        } else {
+            m_data.terrainEdges.emplace_back(v);
+        }
+    }
 
 public:
     explicit LayerBatchBuilder(LayerBatchData &data,
                                const mctp::MapCanvasTexturesProxy &textures,
                                const OptBounds &bounds,
-                               const bool organicTerrain)
+                               const bool organicTerrain,
+                               const RoomVector &rooms,
+                               const terrain_doors::Observation &doors)
         : m_data{data}
         , m_textures{textures}
         , m_bounds{bounds}
         , m_organicTerrain{organicTerrain}
-    {}
+        , m_doors{doors}
+    {
+        if (m_organicTerrain) {
+            m_sectors.reserve(rooms.size());
+            m_wallMasks.reserve(rooms.size());
+            for (const auto &room : rooms) {
+                m_roomHandles.try_emplace(room.getPosition(), &room);
+                const auto [it, inserted] = m_sectors.emplace(room.getPosition(),
+                                                              edgeSector(room.getTerrainType()));
+                uint32_t walls = 0;
+                for (const auto dir : ALL_EXITS_NESW) {
+                    const auto flags = room.getExit(dir).getExitFlags();
+                    if (!flags.isExit() || flags.isDoor())
+                        walls |= 1u << static_cast<uint32_t>(dir);
+                }
+                if (room.getTerrainType() == RoomTerrainEnum::INDOORS
+                    || room.getTerrainType() == RoomTerrainEnum::CITY) {
+                    uint32_t solid = 0;
+                    for (const auto dir : ALL_EXITS_NESW) {
+                        const auto flags = room.getExit(dir).getExitFlags();
+                        if (!flags.isExit() && !flags.isDoor())
+                            solid |= 1u << static_cast<uint32_t>(dir);
+                    }
+                    m_buildingWalls[room.getPosition()] |= solid;
+                }
+                const auto [wall, wallInserted] = m_wallMasks.emplace(room.getPosition(), walls);
+                if (!wallInserted)
+                    wall->second = 15u;
+                // Superimposed rooms are ambiguous; do not invent a bank there.
+                if (!inserted)
+                    it->second = terrain_edges::Sector::UNKNOWN;
+            }
+        }
+    }
 
     ~LayerBatchBuilder() final;
 
@@ -820,41 +1191,72 @@ private:
 
     void virt_visitTerrainTexture(const RoomHandle &room, const MMTexArrayPosition &terrain) final
     {
-        if (terrain.array == INVALID_MM_TEXTURE_ID) {
+        // Hazard visibility must not depend on a legacy sector texture existing.
+        addWarning(room);
+        if (terrain.array == INVALID_MM_TEXTURE_ID
+            && !(m_organicTerrain && room.getTerrainType() == RoomTerrainEnum::ROAD))
             return;
-        }
-
+        using F = terrain_materials::Family;
+        using S = terrain_edges::Sector;
         const auto pos = room.getPosition();
-        const bool forest = room.getTerrainType() == RoomTerrainEnum::FOREST;
-        const bool field = room.getTerrainType() == RoomTerrainEnum::FIELD;
-        if (!m_organicTerrain || (!forest && !field)) {
+        const auto sector = edgeSector(room.getTerrainType());
+        const bool underground = sector == S::TUNNEL || sector == S::CAVERN;
+        const bool paved = sector == S::URBAN || sector == S::INDOORS;
+        const bool underwater = sector == S::UNDERWATER;
+        const int allSeason = (underground || paved || underwater) ? terrain_materials::ALL_SEASON
+                                                                   : 0;
+        const int shadowFlag = terrain_walls::receivesSkyShadows(room.getTerrainType(),
+                                                                 room.getLightType(),
+                                                                 room.getSundeathType())
+                                   ? 0
+                                   : terrain_materials::NO_SKY_SHADOW;
+        const bool supported = underground || paved || underwater || sector == S::FIELD
+                               || sector == S::FOREST || sector == S::HILLS
+                               || sector == S::MOUNTAINS || sector == S::MARSH || sector == S::BRUSH
+                               || (sector == S::WATER
+                                   && room.getTerrainType() != RoomTerrainEnum::UNDERWATER)
+                               || sector == S::ROAD;
+        if (!m_organicTerrain || !supported) {
             m_data.roomTerrains.emplace_back(pos, terrain);
         } else {
-            // Retain the originals for other elevations and distant zoom.
-            m_data.forestTerrains.emplace_back(pos, terrain);
+            if (terrain.array != INVALID_MM_TEXTURE_ID)
+                m_data.forestTerrains.emplace_back(pos, terrain); // Legacy/other-elevation fallback.
             const auto tint = room.getLightType() == RoomLightEnum::DARK
                                   ? getTintColor(RoomTintEnum::DARK)
                               : room.getSundeathType() == RoomSundeathEnum::NO_SUNDEATH
                                   ? getTintColor(RoomTintEnum::NO_SUNDEATH)
                                   : NamedColorEnum::DEFAULT;
-            const auto roadIndex = getRoadIndex(room.getRaw());
-            const auto hasTrailArm = [roadIndex](const RoadIndexMaskEnum direction) {
-                return (roadIndex & direction) != RoadIndexMaskEnum::NONE;
-            };
-            const terrain_sprites::TrailSegments trail{hasTrailArm(RoadIndexMaskEnum::NORTH),
-                                                       hasTrailArm(RoadIndexMaskEnum::SOUTH),
-                                                       hasTrailArm(RoadIndexMaskEnum::EAST),
-                                                       hasTrailArm(RoadIndexMaskEnum::WEST)};
-            const auto pack = m_textures.terrainSpritePacks.find(
-                room.getArea().getStdStringViewUtf8());
-            const int treeAtlas = pack == m_textures.terrainSpritePacks.end() ? 0 : pack->second;
+            const auto id = room.getIdExternal().asUint32();
+            const auto walls = wallMask(pos);
+            const auto allowed = overlapMask(pos);
+            const auto mask = static_cast<uint32_t>(getRoadIndex(room.getRaw()));
+            const terrain_sprites::TrailSegments trail{bool(mask & 1u),
+                                                       bool(mask & 2u),
+                                                       bool(mask & 4u),
+                                                       bool(mask & 8u)};
+            const auto firstShared = m_textures.terrainGroundPacks[0];
+            auto atlas = [&](F family) { return terrain_materials::atlas(firstShared, family); };
             m_data.spriteTexture = m_textures.terrain_sprites.front().array;
-            const auto add = [&](auto &batch,
-                                 const terrain_sprites::Sprite &sprite,
-                                 const int atlas,
-                                 const int flag,
-                                 const NamedColorEnum color) {
-                const auto tex = m_textures.terrain_sprites.at(static_cast<std::size_t>(atlas));
+            static const std::array<Coordinate, 8> roadOffsets{Coordinate{0, 1, 0},
+                                                               Coordinate{0, -1, 0},
+                                                               Coordinate{1, 0, 0},
+                                                               Coordinate{-1, 0, 0},
+                                                               Coordinate{1, 1, 0},
+                                                               Coordinate{-1, 1, 0},
+                                                               Coordinate{1, -1, 0},
+                                                               Coordinate{-1, -1, 0}};
+            uint32_t roadNeighbours = 0;
+            for (std::size_t i = 0; i < roadOffsets.size(); ++i) {
+                const auto peer = m_sectors.find(pos + roadOffsets[i]);
+                if (peer != m_sectors.end() && peer->second == S::ROAD)
+                    roadNeighbours |= 1u << i;
+            }
+            auto add = [&](auto &batch,
+                           const terrain_sprites::Sprite &sprite,
+                           int pack,
+                           int kind,
+                           NamedColorEnum color) {
+                const auto tex = m_textures.terrain_sprites.at(static_cast<std::size_t>(pack));
                 TerrainSpriteVert v;
                 v.anchorSizeLayer = glm::vec4{static_cast<float>(pos.x) + sprite.x,
                                               static_cast<float>(pos.y) + sprite.y,
@@ -862,46 +1264,330 @@ private:
                                               static_cast<float>(pos.z)};
                 v.textureColor = glm::ivec4{tex.position * 16 + static_cast<int>(sprite.variant),
                                             static_cast<int>(color),
-                                            static_cast<int>(sprite.transition),
-                                            flag};
+                                            static_cast<int>(sprite.transition | (allowed << 16u)
+                                                             | (walls << 24u)),
+                                            kind | shadowFlag};
+                if ((kind & 15) == 2)
+                    v.textureColor.w |= static_cast<int>(roadNeighbours << 20u);
                 batch.emplace_back(v);
             };
-            // Shared seasonal underpaint guarantees coverage beneath transparent fringes.
-            add(m_data.organicGroundBase,
-                {0.5f, 0.5f, 1.f, 0, 32768},
-                0,
-                terrain_sprites::flags(terrain_sprites::Kind::BASE),
-                NamedColorEnum::DEFAULT);
-            const auto id = room.getIdExternal().asUint32(); // Saved map ID, never server ID.
-            for (const auto &sprite : terrain_sprites::ground(id)) {
-                add(m_data.groundSprites,
-                    sprite,
-                    m_textures.terrainGroundPacks[forest ? 0 : 1],
-                    terrain_sprites::flags(terrain_sprites::Kind::GROUND,
-                                           terrain_sprites::mix(sprite.transition) & 3u),
-                    tint);
+            auto family = [](S value) {
+                switch (value) {
+                case S::FOREST:
+                    return F::FOREST_GROUND;
+                case S::HILLS:
+                    return F::HILL_GROUND;
+                case S::MOUNTAINS:
+                    return F::MOUNTAIN_GROUND;
+                case S::MARSH:
+                    return F::MARSH_GROUND;
+                case S::BRUSH:
+                    return F::BRUSH_GROUND;
+                case S::WATER:
+                    return F::WATER;
+                case S::UNDERWATER:
+                    return F::UNDERWATER_GROUND;
+                case S::TUNNEL:
+                    return F::TUNNEL_GROUND;
+                case S::CAVERN:
+                    return F::CAVERN_GROUND;
+                case S::URBAN:
+                    return F::CITY_GROUND;
+                case S::INDOORS:
+                    return F::INDOOR_GROUND;
+                default:
+                    return F::FIELD_GROUND;
+                }
+            };
+            if (sector != S::ROAD) {
+                if (paved) {
+                    add(m_data.organicGroundBase,
+                        {0.5f, 0.5f, 1.f, 0, 32768},
+                        atlas(family(sector)),
+                        terrain_materials::PAVING_KIND | allSeason,
+                        NamedColorEnum::DEFAULT);
+                } else if (sector == S::WATER) {
+                    add(m_data.organicGroundBase,
+                        {0.5f, 0.5f, 1.f, 0, 32768},
+                        atlas(F::WATER),
+                        terrain_materials::WATER_KIND,
+                        NamedColorEnum::DEFAULT);
+                    // Allow patches across mapped water neighbours, including
+                    // diagonals, but never beyond the actual water footprint.
+                    static const std::array<Coordinate, 8> offsets{Coordinate{0, 1, 0},
+                                                                   Coordinate{0, -1, 0},
+                                                                   Coordinate{1, 0, 0},
+                                                                   Coordinate{-1, 0, 0},
+                                                                   Coordinate{1, 1, 0},
+                                                                   Coordinate{-1, 1, 0},
+                                                                   Coordinate{1, -1, 0},
+                                                                   Coordinate{-1, -1, 0}};
+                    uint32_t waterMask = 0;
+                    for (size_t i = 0; i < offsets.size(); ++i) {
+                        const auto it = m_sectors.find(pos + offsets[i]);
+                        if (it != m_sectors.end() && it->second == S::WATER)
+                            waterMask |= 1u << i;
+                    }
+                    for (const auto &sprite : terrain_sprites::water(id)) {
+                        const int flip
+                            = static_cast<int>(terrain_sprites::mix(sprite.transition) & 1u) << 8;
+                        add(m_data.groundSprites,
+                            sprite,
+                            atlas(F::WATER),
+                            terrain_materials::WATER_PATCH_KIND | flip,
+                            tint);
+                        m_data.groundSprites.back().textureColor.z = static_cast<int>(
+                            sprite.transition | ((waterMask & allowed) << 16u) | (walls << 24u));
+                    }
+                } else {
+                    add(m_data.organicGroundBase,
+                        {0.5f, 0.5f, 1.f, 0, 32768},
+                        0,
+                        3 | allSeason,
+                        NamedColorEnum::DEFAULT);
+                    const auto firstTile = m_textures.terrain_sprites
+                                               .at(static_cast<std::size_t>(firstShared))
+                                               .position
+                                           * 16;
+                    m_data.organicGroundBase.back().textureColor.x = static_cast<int>(
+                        terrain_edges::withMaterials(static_cast<uint32_t>(sector),
+                                                     static_cast<uint32_t>(firstTile)));
+                    for (auto sprite : terrain_sprites::ground(id)) {
+                        if (underground)
+                            sprite.variant = terrain_sprites::mix(sprite.transition) % 24u;
+                        add(m_data.groundSprites,
+                            sprite,
+                            atlas(family(sector)),
+                            terrain_sprites::flags(terrain_sprites::Kind::GROUND, 0u) | allSeason,
+                            tint);
+                    }
+                }
             }
-            for (const auto &sprite :
-                 forest ? terrain_sprites::forest(id) : terrain_sprites::field(id)) {
-                if (terrain_sprites::blocksTree(sprite, trail))
-                    continue;
-                if (field && (terrain_sprites::mix(sprite.transition) & 1u))
-                    continue;
-                add(m_data.terrainSprites,
-                    sprite,
-                    forest ? treeAtlas : m_textures.terrainGroundPacks[2],
-                    terrain_sprites::flags(forest ? terrain_sprites::Kind::TREE
-                                                  : terrain_sprites::Kind::FIELD_DETAIL),
+            if (walls != 0) {
+                add(m_data.wallGrime,
+                    {0.5f, 0.5f, 1.f, 0, 32768},
+                    atlas(F::FIELD_GROUND),
+                    terrain_materials::GRIME_KIND | terrain_materials::ALL_SEASON,
                     tint);
+                uint32_t depths = 0;
+                uint32_t openEnds = 0;
+                for (const auto dir : ALL_EXITS_NESW) {
+                    const auto face = wallFamily(room.getTerrainType(), pos, dir);
+                    if (!face || !m_textures.terrainWallPacks.at(static_cast<size_t>(*face)))
+                        continue;
+                    const float depth = terrain_walls::depth(*face)
+                                        + (room.getTerrainType() == RoomTerrainEnum::CITY
+                                               ? terrain_walls::GUTTER_DEPTH
+                                               : 0.f);
+                    depths |= terrain_walls::depthByte(depth) << (static_cast<unsigned>(dir) * 8u);
+                    openEnds |= terrain_walls::openEnds(static_cast<unsigned>(dir),
+                                                        wallEnds(room.getTerrainType(), pos, dir),
+                                                        walls)
+                                << (static_cast<unsigned>(dir) * 2u);
+                }
+                m_data.wallGrime.back().textureColor.x = static_cast<int>(depths);
+                // Kind 14 reuses ground-overlap bits for two open ends per edge.
+                m_data.wallGrime.back().textureColor.z &= ~static_cast<int>(255u << 16u);
+                m_data.wallGrime.back().textureColor.z |= static_cast<int>(openEnds << 16u);
+            }
+            if (shadowFlag == 0) {
+                // Pack a 5x5 neighbourhood once per receiver. The shader
+                // unions all projected walls, avoiding darker double shadows.
+                std::array<uint32_t, 4> casters{};
+                bool any = false;
+                for (size_t i = 0; i < terrain_walls::shadowOffsets.size(); ++i) {
+                    const auto &offset = terrain_walls::shadowOffsets[i];
+                    const Coordinate caster{pos.x + offset[0], pos.y + offset[1], pos.z};
+                    const auto it = m_buildingWalls.find(caster);
+                    if (it == m_buildingWalls.end() || it->second == 0)
+                        continue;
+                    casters[i / 8] |= it->second << ((i % 8) * 4);
+                    any = true;
+                }
+                if (any) {
+                    add(m_data.wallShadows,
+                        {0.5f, 0.5f, 1.f, 0, 0},
+                        atlas(F::FIELD_GROUND),
+                        terrain_materials::WALL_SHADOW_KIND,
+                        NamedColorEnum::DEFAULT);
+                    m_data.wallShadows.back().anchorSizeLayer.z = terrain_walls::WALL_HEIGHT_ROOMS;
+                    m_data.wallShadows.back().textureColor
+                        = glm::ivec4{static_cast<int>(casters[0]),
+                                     static_cast<int>(casters[2]),
+                                     static_cast<int>(casters[1]),
+                                     terrain_materials::WALL_SHADOW_KIND
+                                         | terrain_materials::ALL_SEASON
+                                         | (static_cast<int>(casters[3]) << 4)};
+                }
+            }
+            // A convex outside building corner belongs to the diagonal street
+            // or field room. Finish that quadrant in its own room, rather than
+            // extending either bordering wall beyond its owning square.
+            for (unsigned vertical = 0; vertical < 2; ++vertical) {
+                for (unsigned horizontal = 2; horizontal < 4; ++horizontal) {
+                    const auto v = static_cast<ExitDirEnum>(vertical);
+                    const auto h = static_cast<ExitDirEnum>(horizontal);
+                    const auto diag = m_sectors.find(pos + exitDir(v) + exitDir(h));
+                    const auto nextV = m_sectors.find(pos + exitDir(v));
+                    const auto nextH = m_sectors.find(pos + exitDir(h));
+                    if (diag == m_sectors.end() || nextV == m_sectors.end()
+                        || nextH == m_sectors.end() || nextV->second != sector
+                        || nextH->second != sector
+                        || terrain_walls::isIndoors(room.getTerrainType()))
+                        continue;
+                    const bool indoor = diag->second == S::INDOORS;
+                    const bool city = diag->second == S::URBAN;
+                    const auto face = terrain_walls::family(room.getTerrainType(), indoor, city);
+                    if ((!indoor && !city) || !face
+                        || (*face != F::CITY_EAVE
+                            && !m_textures.terrainWallPacks.at(static_cast<size_t>(F::WALL_FINISH)))
+                        || !m_textures.terrainWallPacks.at(static_cast<size_t>(*face))
+                        || !(wallMask(pos + exitDir(v)) & (1u << horizontal))
+                        || !(wallMask(pos + exitDir(h)) & (1u << vertical)))
+                        continue;
+                    const unsigned turn = vertical == 0 ? (horizontal == 3 ? 0u : 3u)
+                                                        : (horizontal == 3 ? 1u : 2u);
+                    const auto hash = terrain_sprites::mix(
+                        id ^ (vertical * 4u + horizontal) * 0x434150u);
+                    int style = terrain_materials::WALL_KIND | terrain_materials::ALL_SEASON
+                                | terrain_materials::NO_SKY_SHADOW
+                                | terrain_materials::WALL_CORNER_ONLY | static_cast<int>(turn << 4u)
+                                | static_cast<int>(
+                                    terrain_walls::depthByte(terrain_walls::depth(*face))
+                                    << terrain_materials::WALL_DEPTH_SHIFT);
+                    style |= *face == F::CITY_EAVE ? (terrain_materials::SHINGLE_EAVE
+                                                      | terrain_materials::CITY_GUTTER)
+                                                   : terrain_materials::STONE_FACE;
+                    add(m_data.terrainWalls,
+                        {0.5f, 0.5f, 1.f, (*face == F::CITY_EAVE ? 6u : 18u) + hash % 6u, 0},
+                        atlas(*face == F::CITY_EAVE ? F::CITY_EAVE : F::WALL_FINISH),
+                        style,
+                        tint);
+                    if (*face == F::CITY_EAVE
+                        && m_textures.terrainWallPacks.at(static_cast<size_t>(F::WALL_FINISH))) {
+                        const auto finish = m_textures.terrain_sprites.at(
+                            static_cast<size_t>(atlas(F::WALL_FINISH)));
+                        auto cap = m_data.terrainWalls.back();
+                        cap.textureColor.x = finish.position * 16 + static_cast<int>(hash % 3u);
+                        cap.textureColor.w |= terrain_materials::ROOF_CAP_OVERLAY;
+                        cap.textureColor.w &= ~terrain_materials::CITY_GUTTER;
+                        cap.textureColor.z = 0;
+                        m_data.roofCaps.emplace_back(cap);
+                        // Split one shared cap into three room-owned fragments.
+                        // The north/west shoulders overlap neighbouring roof
+                        // strips without drawing into the diagonal indoor room.
+                        for (unsigned fragment = 1; fragment <= 2; ++fragment) {
+                            auto shoulder = cap;
+                            const auto direction = (fragment == 1) == ((turn & 1u) == 0) ? v : h;
+                            const auto offset = exitDir(direction);
+                            shoulder.anchorSizeLayer.x += static_cast<float>(offset.x);
+                            shoulder.anchorSizeLayer.y += static_cast<float>(offset.y);
+                            shoulder.textureColor.z = static_cast<int>(fragment << 16u);
+                            m_data.roofCaps.emplace_back(shoulder);
+                        }
+                    }
+                }
+            }
+            // Road rooms use a composited base material; their own ground
+            // patches would cover the route. Adjoining land fringes overlap it.
+            if (sector != S::ROAD && sector != S::WATER && !paved) {
+                auto sprites = sector == S::FIELD ? terrain_sprites::field(id)
+                                                  : terrain_sprites::forest(id);
+                F foreground = F::FIELD_DETAIL;
+                size_t count = 9;
+                float scale = 1.f;
+                switch (sector) {
+                case S::FOREST:
+                    break;
+                case S::TUNNEL:
+                case S::CAVERN:
+                    foreground = F::CAVE_DETAIL;
+                    count = (terrain_sprites::mix(id ^ 0x424f4e45u) & 3u) == 0 ? 1 : 0;
+                    scale = 0.55f;
+                    break;
+                case S::MOUNTAINS:
+                    foreground = F::MOUNTAIN_PEAK;
+                    count = 4;
+                    scale = 1.85f;
+                    break;
+                case S::HILLS:
+                    foreground = F::HILL;
+                    count = 4;
+                    scale = 1.9f;
+                    break;
+                case S::UNDERWATER:
+                    foreground = F::UNDERWATER_DETAIL;
+                    count = 4;
+                    scale = 0.85f;
+                    break;
+                case S::MARSH:
+                    foreground = F::REEDS;
+                    count = 6;
+                    scale = 0.8f;
+                    break;
+                case S::BRUSH:
+                    foreground = F::BRUSH;
+                    count = 5;
+                    scale = 1.55f;
+                    break;
+                default:
+                    break;
+                }
+                const auto regional = m_textures.terrainSpritePacks.find(
+                    room.getArea().getStdStringViewUtf8());
+                const int tree = regional == m_textures.terrainSpritePacks.end() ? 0
+                                                                                 : regional->second;
+                for (size_t i = 0; i < count; ++i) {
+                    auto sprite = sprites[i];
+                    if (terrain_sprites::blocksTree(sprite, trail))
+                        continue;
+                    if (sector == S::FIELD && (terrain_sprites::mix(sprite.transition) & 1u))
+                        continue;
+                    sprite.size *= scale;
+                    if (sector == S::BRUSH)
+                        sprite.size = std::min(sprite.size, 0.90f);
+                    if (underwater)
+                        sprite.variant = terrain_sprites::mix(sprite.transition ^ 0x534541u) % 12u;
+                    const bool fitted = (sector == S::MOUNTAINS || sector == S::HILLS)
+                                            ? terrain_sprites::fitForegroundScaled(sprite,
+                                                                                   walls,
+                                                                                   allowed)
+                                            : terrain_sprites::fitForeground(sprite, walls, allowed);
+                    if (!fitted || terrain_sprites::blocksTree(sprite, trail))
+                        continue;
+                    if (underground)
+                        sprite.variant = terrain_sprites::mix(sprite.transition ^ 0x50524f50u)
+                                         % 24u;
+                    const int foregroundKind = sector == S::FOREST ? 0
+                                               : sector == S::FIELD
+                                                   ? 1
+                                                   : terrain_materials::FOREGROUND_KIND;
+                    add(m_data.terrainSprites,
+                        sprite,
+                        sector == S::FOREST ? tree : atlas(foreground),
+                        foregroundKind | allSeason
+                            | ((sector == S::MOUNTAINS || sector == S::HILLS || sector == S::BRUSH)
+                                   ? terrain_materials::CASTS_SHADOW
+                                   : 0)
+                            | (sector == S::HILLS ? terrain_materials::MID_SHADOW : 0)
+                            | (sector == S::BRUSH ? terrain_materials::LOW_SHADOW : 0),
+                        tint);
+                }
             }
         }
+        addTerrainEdges(room);
         m_data.roomLayerBoostQuads.emplace_back(pos, NamedColorEnum::DEFAULT);
     }
 
     void virt_visitTrailTexture(const RoomHandle &room, const MMTexArrayPosition &trail) final
     {
+        // Organic city paving is the route surface; do not paint a legacy
+        // dirt trail over its cobbles. Keep legacy mode and other sectors.
+        if (m_organicTerrain && room.getTerrainType() == RoomTerrainEnum::CITY)
+            return;
         if (trail.array != INVALID_MM_TEXTURE_ID) {
-            m_data.roomTrails.emplace_back(room.getPosition(), trail);
+            auto &batch = hasOrganicRoute(room) ? m_data.legacyTrails : m_data.roomTrails;
+            batch.emplace_back(room.getPosition(), trail);
         }
     }
 
@@ -928,6 +1614,17 @@ private:
             return;
         }
 
+        if (m_organicTerrain && isNESW(dir) && room.getExit(dir).getExitFlags().isDoor()
+            && m_textures.terrainWallPacks.at(
+                static_cast<std::size_t>(terrain_materials::Family::DOOR))
+            && (wallType == WallTypeEnum::DOOR || wallType == WallTypeEnum::SOLID)) {
+            if (wallType == WallTypeEnum::DOOR)
+                addDoor(room, dir);
+            const auto tex = wallType == WallTypeEnum::DOOR ? m_textures.door[dir]
+                                                            : m_textures.wall[dir];
+            m_data.legacyDoorLines.emplace_back(room.getPosition(), tex, color);
+            return; // Door pass supplies jamb stubs and the correctly open aperture.
+        }
         if (wallType == WallTypeEnum::DOOR) {
             // Note: We could use two door textures (NESW and UD), and then just rotate the
             // texture coordinates, but doing that would require a different code path.
@@ -939,6 +1636,107 @@ private:
                 if (wallType == WallTypeEnum::SOLID) {
                     const MMTexArrayPosition &tex = m_textures.wall[dir];
                     m_data.solidWallLines.emplace_back(room.getPosition(), tex, color);
+                    const auto family = wallFamily(room.getTerrainType(), room.getPosition(), dir);
+                    // Doors and unsupported environments retain MMapper's own
+                    // renderer until appropriate overlay artwork is provided.
+                    if (m_organicTerrain && family && !room.getExit(dir).getExitFlags().isDoor()) {
+                        const auto slot = static_cast<size_t>(*family);
+                        if (m_textures.terrainWallPacks.at(slot)) {
+                            const auto pos = room.getPosition();
+                            const auto hash = terrain_sprites::mix(
+                                room.getIdExternal().asUint32()
+                                ^ (static_cast<uint32_t>(dir) * 0x57414c4cu));
+                            const auto pack
+                                = terrain_materials::atlas(m_textures.terrainGroundPacks[0],
+                                                           *family);
+                            const auto image = m_textures.terrain_sprites.at(
+                                static_cast<size_t>(pack));
+                            const auto tint = room.getLightType() == RoomLightEnum::DARK
+                                                  ? getTintColor(RoomTintEnum::DARK)
+                                              : room.getSundeathType()
+                                                      == RoomSundeathEnum::NO_SUNDEATH
+                                                  ? getTintColor(RoomTintEnum::NO_SUNDEATH)
+                                                  : NamedColorEnum::DEFAULT;
+                            TerrainSpriteVert wall;
+                            wall.anchorSizeLayer = glm::vec4{static_cast<float>(pos.x) + 0.5f,
+                                                             static_cast<float>(pos.y) + 0.5f,
+                                                             1.f,
+                                                             static_cast<float>(pos.z)};
+                            const bool roof = *family == terrain_materials::Family::CITY_EAVE;
+                            // Adjacent rooms along one wall use the same
+                            // periodic strip. Variety belongs within the art
+                            // and between wall lines, not at every room join.
+                            const auto variant = roof ? terrain_sprites::mix(
+                                                            static_cast<uint32_t>(
+                                                                dir == ExitDirEnum::NORTH
+                                                                        || dir == ExitDirEnum::SOUTH
+                                                                    ? pos.y
+                                                                    : pos.x)
+                                                            ^ (static_cast<uint32_t>(dir)
+                                                               * 0x524f4f46u))
+                                                            % 6u
+                                                      : hash % 24u;
+                            wall.textureColor
+                                = glm::ivec4{image.position * 16 + static_cast<int>(variant),
+                                             static_cast<int>(tint),
+                                             static_cast<int>(hash & 65535u),
+                                             terrain_materials::WALL_KIND
+                                                 | terrain_materials::ALL_SEASON
+                                                 | terrain_materials::NO_SKY_SHADOW
+                                                 | (static_cast<int>(terrain_walls::rotation(
+                                                        static_cast<unsigned>(dir)))
+                                                    << 4)};
+                            auto faceMask = wallMask(pos);
+                            if (roof) {
+                                // A stone perimeter beside a roof is not a
+                                // valley. Only join perpendicular roof faces.
+                                for (const auto side : ALL_EXITS_NESW)
+                                    if (wallFamily(room.getTerrainType(), pos, side) != family)
+                                        faceMask &= ~(1u << static_cast<unsigned>(side));
+                            }
+                            wall.textureColor.z |= static_cast<int>(faceMask << 24u);
+                            wall.textureColor.w |= static_cast<int>(terrain_walls::depthByte(
+                                                       terrain_walls::depth(*family)))
+                                                   << terrain_materials::WALL_DEPTH_SHIFT;
+                            if (*family == terrain_materials::Family::CITY_EAVE)
+                                wall.textureColor.w |= terrain_materials::SHINGLE_EAVE;
+                            if (room.getTerrainType() == RoomTerrainEnum::CITY)
+                                wall.textureColor.w |= terrain_materials::CITY_GUTTER;
+                            wall.textureColor.w
+                                |= static_cast<int>(wallEnds(room.getTerrainType(), pos, dir))
+                                   << terrain_materials::WALL_END_SHIFT;
+                            if (*family == terrain_materials::Family::TIMBER_WALL)
+                                wall.textureColor.w |= terrain_materials::TIMBER_FACE;
+                            if (*family == terrain_materials::Family::STONE_WALL)
+                                wall.textureColor.w |= terrain_materials::STONE_FACE;
+                            if (m_textures.terrainWallPacks.at(
+                                    static_cast<size_t>(terrain_materials::Family::WALL_FINISH))) {
+                                const int finishPack = terrain_materials::atlas(
+                                    m_textures.terrainGroundPacks[0],
+                                    terrain_materials::Family::WALL_FINISH);
+                                const auto finish = m_textures.terrain_sprites.at(
+                                    static_cast<size_t>(finishPack));
+                                wall.textureColor.z &= ~65535;
+                                wall.textureColor.z |= finish.position * 16;
+                                wall.textureColor.w |= terrain_materials::HAS_WALL_FINISH;
+                            }
+                            m_data.terrainWalls.emplace_back(wall);
+                            if (roof
+                                && (faceMask
+                                    & (1u << terrain_walls::alongDirections(
+                                           static_cast<unsigned>(dir))[0]))
+                                && (wall.textureColor.w & terrain_materials::HAS_WALL_FINISH)) {
+                                auto cap = wall;
+                                cap.textureColor.x = (wall.textureColor.z & 65535) + 6
+                                                     + static_cast<int>(variant % 3u);
+                                cap.textureColor.z = 0;
+                                cap.textureColor.w |= terrain_materials::ROOF_CAP_OVERLAY;
+                                cap.textureColor.w &= ~terrain_materials::WALL_CORNER_ONLY;
+                                m_data.roofCaps.emplace_back(cap);
+                            }
+                            m_data.spriteTexture = image.array;
+                        }
+                    }
                 } else {
                     const MMTexArrayPosition &tex = m_textures.dotted_wall[dir];
                     m_data.dottedWallLines.emplace_back(room.getPosition(), tex, color);
@@ -987,7 +1785,12 @@ NODISCARD static LayerMeshesIntermediate generateLayerMeshes(
     DECL_TIMER(t, "generateLayerMeshes");
 
     LayerBatchData data{textures.white_pixel};
-    LayerBatchBuilder builder{data, textures, bounds, visitRoomOptions.organicTerrain};
+    LayerBatchBuilder builder{data,
+                              textures,
+                              bounds,
+                              visitRoomOptions.organicTerrain,
+                              rooms,
+                              visitRoomOptions.doors};
     visitRooms(rooms, textures, builder, visitRoomOptions);
 
     data.sort();
@@ -1104,10 +1907,19 @@ LayerMeshes LayerMeshesIntermediate::getLayerMeshes(OpenGL &gl) const
     lm.organicGroundBase = r.resolve(organicGroundBase);
     lm.groundSprites = r.resolve(groundSprites);
     lm.terrainSprites = r.resolve(terrainSprites);
+    lm.terrainEdges = r.resolve(terrainEdges);
+    lm.terrainWalls = r.resolve(terrainWalls);
+    lm.roofCaps = r.resolve(roofCaps);
+    lm.doorSprites = r.resolve(doorSprites);
+    lm.warningSprites = r.resolve(warningSprites);
+    lm.wallShadows = r.resolve(wallShadows);
+    lm.wallGrime = r.resolve(wallGrime);
+    lm.legacyTrails = r.resolve(legacyTrails);
     lm.trails = r.resolve(trails);
     lm.tints = r.resolve(tints);
     lm.overlays = r.resolve(overlays);
     lm.doors = r.resolve(doors);
+    lm.legacyDoorLines = r.resolve(legacyDoorLines);
     lm.walls = r.resolve(walls);
     lm.dottedWalls = r.resolve(dottedWalls);
     lm.upDownExits = r.resolve(upDownExits);
@@ -1156,10 +1968,12 @@ void LayerMeshes::render(const int thisLayer,
             layerBoost.render(less_blended.withColor(layerWhite));
         } else {
             terrain.render(less_blended.withColor(color));
-            if (organicSelected)
-                organicGroundBase.render(less_blended.withColor(color).withTerrainDay(day));
-            else
+            if (organicSelected) {
+                if (organicGroundBase)
+                    organicGroundBase.render(less_blended.withColor(color).withTerrainDay(day));
+            } else {
                 forestTerrain.render(less_blended.withColor(color));
+            }
         }
     }
 
@@ -1179,12 +1993,19 @@ void LayerMeshes::render(const int thisLayer,
         const auto spriteState = defaultState.withBlend(BlendModeEnum::TRANSPARENCY)
                                      .withColor(color)
                                      .withTerrainDay(day);
-        groundSprites.render(spriteState);
-        if (shadow.z > 0.f) {
+        if (groundSprites)
+            groundSprites.render(spriteState);
+        if (wallGrime)
+            wallGrime.render(spriteState);
+        if (wallShadows && shadow.z > 0.f)
+            wallShadows.render(spriteState.withTerrainShadow(shadow));
+        if (terrainSprites && shadow.z > 0.f) {
             // Same static instance buffer and alpha images; one extra draw call.
             terrainSprites.render(spriteState.withTerrainShadow(shadow));
         }
-        terrainSprites.render(spriteState);
+        if (terrainSprites)
+            terrainSprites.render(
+                spriteState.withTerrainShadow(glm::vec4{shadow.x, shadow.y, shadow.z, 0.f}));
     }
 
     if (!disableTextures) {
@@ -1197,6 +2018,14 @@ void LayerMeshes::render(const int thisLayer,
         }
 
         trails.render(equal_blended.withColor(color));
+        if (organicSelected) {
+            if (terrainEdges)
+                terrainEdges.render(defaultState.withBlend(BlendModeEnum::TRANSPARENCY)
+                                        .withColor(color)
+                                        .withTerrainDay(day));
+        } else {
+            legacyTrails.render(equal_blended.withColor(color));
+        }
         overlays.render(equal_blended.withColor(color));
     }
 
@@ -1207,10 +2036,37 @@ void LayerMeshes::render(const int thisLayer,
 
         // Doors are drawn on top of the up-down exits
         doors.render(lequal_blended.withColor(color));
+        if (!organicSelected || disableTextures)
+            legacyDoorLines.render(lequal_blended.withColor(color));
         // and walls are drawn on top of doors.
         walls.render(lequal_blended.withColor(color));
         dottedWalls.render(lequal_blended.withColor(color));
+        if (!disableTextures && organicSelected && terrainWalls) {
+            // Opaque boundary texels cover the underlying wall; the full quad
+            // remains inside its owning room, including at joined corners.
+            terrainWalls.render(defaultState.withBlend(BlendModeEnum::TRANSPARENCY)
+                                    .withColor(Colors::white)
+                                    .withTerrainDay(day));
+        }
+        if (!disableTextures && organicSelected && roofCaps)
+            roofCaps.render(defaultState.withBlend(BlendModeEnum::TRANSPARENCY)
+                                .withColor(Colors::white)
+                                .withTerrainDay(day));
     }
+
+    // Door art is a final room-owned overlay, above legacy wall/door lines
+    // and decorative roofs. Up/down doors keep their existing representation.
+    if (!disableTextures && organicSelected && doorSprites)
+        doorSprites.render(defaultState.withBlend(BlendModeEnum::TRANSPARENCY)
+                               .withColor(Colors::white)
+                               .withTerrainDay(day));
+
+    // Safety markings must survive legacy load/mob overlays, foregrounds
+    // and wall decoration. Keep this above every map-room artwork pass.
+    if (!disableTextures && organicSelected && warningSprites)
+        warningSprites.render(defaultState.withBlend(BlendModeEnum::TRANSPARENCY)
+                                  .withColor(Colors::white)
+                                  .withTerrainDay(day));
 
     if (thisLayer != focusedLayer) {
         // Darker when below, lighter when above
@@ -1256,9 +2112,11 @@ void InternalData::virt_finish(MapBatches &output, OpenGL &gl, GLFont &font) con
 // NOTE: All of the lamda captures are copied, including the texture data!
 FutureSharedMapBatchFinisher generateMapDataFinisher(const mctp::MapCanvasTexturesProxy &textures,
                                                      const std::shared_ptr<const FontMetrics> &font,
-                                                     const Map &map)
+                                                     const Map &map,
+                                                     const terrain_doors::Observation &doors)
 {
-    const auto visitRoomOptions = getVisitRoomOptions();
+    auto visitRoomOptions = getVisitRoomOptions();
+    visitRoomOptions.doors = doors;
 
     return std::async(std::launch::async,
                       [textures, font, map, visitRoomOptions]() -> SharedMapBatchFinisher {

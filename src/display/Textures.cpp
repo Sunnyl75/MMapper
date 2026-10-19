@@ -456,20 +456,63 @@ void MapCanvas::initTextures()
     auto packs = terrain_sprites::loadSpritePacks(getPixmapFilenameRaw("organic-terrain/packs.json"),
                                                   QImage{QStringLiteral(
                                                       ":/pixmaps/terrain-trees-seasons.png")});
-    constexpr std::array<const char *, 3> sheets{"terrain-forest-ground-seasons.png",
-                                                 "terrain-field-ground-seasons.png",
-                                                 "terrain-field-details-seasons.png"};
+    constexpr auto &sheets = terrain_materials::SHEETS;
     for (std::size_t i = 0; i < sheets.size(); ++i) {
-        QImage sheet{getPixmapFilenameRaw(QString::fromLatin1(sheets[i]))};
-        const auto valid = [](const QImage &image) {
+        QImage sheet{getPixmapFilenameRaw(QString::fromLatin1(sheets[i].filename))};
+        const auto family = static_cast<terrain_materials::Family>(i);
+        const bool door = family == terrain_materials::Family::DOOR;
+        const bool warning = family == terrain_materials::Family::DEATH_TRAP;
+        const bool fixed = door || warning || family == terrain_materials::Family::UNDERWATER_GROUND
+                           || family == terrain_materials::Family::UNDERWATER_DETAIL;
+        const int columns = family == terrain_materials::Family::UNDERWATER_GROUND ? 3 : 6;
+        if (door)
+            sheet = terrain_sprites::alignDoorSheet(sheet);
+        else if (fixed)
+            sheet = terrain_sprites::expandFixedSheet(sheet, warning ? 1 : columns, warning ? 1 : 2);
+        const bool repeat = sheets[i].placement == terrain_materials::Placement::REPEAT;
+        const auto valid = [repeat](const QImage &image) {
+            if (repeat)
+                return !image.isNull() && image.width() == image.height();
             return !image.isNull() && image.width() % 6 == 0 && image.height() % 4 == 0
                    && image.width() / 6 == image.height() / 4;
         };
         if (!valid(sheet)) {
-            qWarning() << "Invalid seasonal ground sheet; using bundled fallback:" << sheets[i];
-            sheet = QImage{QStringLiteral(":/pixmaps/") + QString::fromLatin1(sheets[i])};
+            qWarning() << "Invalid seasonal terrain sheet; using bundled fallback:"
+                       << sheets[i].filename;
+            sheet = QImage{QStringLiteral(":/pixmaps/") + QString::fromLatin1(sheets[i].filename)};
+            if (door)
+                sheet = terrain_sprites::alignDoorSheet(sheet);
+            else if (fixed)
+                sheet = terrain_sprites::expandFixedSheet(sheet,
+                                                          warning ? 1 : columns,
+                                                          warning ? 1 : 2);
         }
-        textures.terrainGroundPacks[i] = terrain_sprites::appendSeasonalSheet(packs, sheet);
+        sheet = terrain_sprites::alignSeasonalSheet(sheet, sheets[i].placement);
+        if (sheets[i].placement == terrain_materials::Placement::FINISH)
+            terrain_sprites::applyRoofCaps(sheet,
+                                           QImage{getPixmapFilenameRaw(
+                                               QStringLiteral("terrain-roof-caps.png"))});
+        if (door || warning || sheets[i].placement == terrain_materials::Placement::WALL
+            || sheets[i].placement == terrain_materials::Placement::EAVE
+            || sheets[i].placement == terrain_materials::Placement::MASONRY
+            || sheets[i].placement == terrain_materials::Placement::FINISH) {
+            const auto slot = i;
+            textures.terrainWallPacks.at(slot) = !sheet.isNull();
+            if (sheet.isNull()) {
+                sheet = QImage{1536, 1024, QImage::Format_ARGB32_Premultiplied};
+                sheet.fill(Qt::transparent); // Preserve family indices without drawing a fallback.
+            }
+        }
+        const int atlas = repeat ? terrain_sprites::appendRepeatMaterial(packs, sheet)
+                          : (fixed || sheets[i].placement == terrain_materials::Placement::FINISH
+                             || sheets[i].placement == terrain_materials::Placement::EAVE)
+                              ? terrain_sprites::appendFixedSheet(packs, sheet)
+                              : terrain_sprites::appendSeasonalSheet(packs, sheet);
+        if (i < textures.terrainGroundPacks.size())
+            textures.terrainGroundPacks[i] = atlas;
+        assert(atlas
+               == terrain_materials::atlas(textures.terrainGroundPacks[0],
+                                           static_cast<terrain_materials::Family>(i)));
     }
     textures.terrain_sprites.clear();
     textures.terrainSpritePacks = std::move(packs.areas);
@@ -781,6 +824,7 @@ MapCanvasTexturesProxy getProxy(const MapCanvasTextures &mct)
     MapCanvasTexturesProxy result;
     result.terrainSpritePacks = mct.terrainSpritePacks;
     result.terrainGroundPacks = mct.terrainGroundPacks;
+    result.terrainWallPacks = mct.terrainWallPacks;
 #define X_COPY_PROXY(_Type, _Name) result._Name = detail::copy_proxy(mct._Name);
     XFOREACH_MAPCANVAS_TEXTURES(X_COPY_PROXY)
 #undef X_COPY_PROXY
