@@ -16,6 +16,7 @@
 
 #include <chrono>
 #include <memory>
+#include <optional>
 
 #undef TRANSPARENT // Bad dog, Microsoft; bad dog!!!
 
@@ -72,6 +73,12 @@ private:
     MumeTimeEnum m_currentTimeOfDay = MumeTimeEnum::DAY;
     MumeMoonVisibilityEnum m_moonVisibility = MumeMoonVisibilityEnum::UNKNOWN;
 
+    std::optional<MumeMoment> m_clockMoment;
+    std::optional<MumeMoment> m_previewMoment;
+    std::chrono::steady_clock::time_point m_clockAnchorTime;
+    glm::vec4 m_skyTint{0.f, 0.f, 0.f, -1.f};
+    bool m_skyChanging = false;
+
     // Meshes
     std::unique_ptr<Legacy::WeatherParticleMesh> m_particles;
     UniqueMesh m_atmosphere;
@@ -88,6 +95,7 @@ public:
     DELETE_CTORS_AND_ASSIGN_OPS(GLWeather);
 
 public:
+    void setPreviewMoment(std::optional<MumeMoment> moment);
     void update();
     void prepare();
     void render(const GLRenderState &rs);
@@ -96,6 +104,7 @@ public:
     NODISCARD bool isTransitioning() const;
 
 private:
+    void updateSkyTint();
     void updateTargets();
     void updateFromGame();
     void initMeshes();

@@ -493,3 +493,16 @@ add_executable(TestTerrainDoors TestTerrainDoors.cpp ../src/display/TerrainDoors
 target_link_libraries(TestTerrainDoors PRIVATE Qt6::Core coverage_config)
 set_target_properties(TestTerrainDoors PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
 add_test(NAME TestTerrainDoors COMMAND TestTerrainDoors)
+
+add_executable(TestTerrainTwilight TestTerrainTwilight.cpp)
+target_link_libraries(TestTerrainTwilight PRIVATE coverage_config)
+set_target_properties(TestTerrainTwilight PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainTwilight COMMAND TestTerrainTwilight)
+
+add_executable(TestTerrainPreviewClock TestTerrainPreviewClock.cpp
+    ../src/mainwindow/TerrainPreviewClock.cpp ${clock_SRCS})
+add_dependencies(TestTerrainPreviewClock mm_test mm_global)
+target_link_libraries(TestTerrainPreviewClock PRIVATE mm_test mm_global
+    Qt6::Network Qt6::Gui Qt6::Test Qt6::Widgets coverage_config)
+set_target_properties(TestTerrainPreviewClock PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainPreviewClock COMMAND TestTerrainPreviewClock)

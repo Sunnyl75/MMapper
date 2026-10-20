@@ -32,6 +32,16 @@ int main()
     seen.clear();
     assert(seen.serverRoom == 0 && seen.states[1] == State::UNKNOWN);
     assert(!seen.observe(json(R"({"exits":{"n":{"flags":[]}}})"), true));
+    assert(seen.renderState() == (std::array<int32_t, 4>{0, 0, 0, 0}));
+    assert(seen.observe(
+        json(
+            R"({"id":4294967295,"exits":{"n":{"flags":["closed"]},"e":{"flags":[]},"w":{"flags":["closed"]}}})"),
+        false));
+    const auto words = seen.renderState();
+    assert(words[0] == roomWord(0xffffffffu));
+    assert(words[1] == (1 | (2 << 4) | (1 << 6)));
+    seen.clear();
+    assert(seen.renderState() == (std::array<int32_t, 4>{0, 0, 0, 0}));
     for (uint32_t a = 1; a < 500; ++a)
         for (unsigned axis = 0; axis < 2; ++axis) {
             assert(variant(a, a + 1, axis) == variant(a + 1, a, axis));

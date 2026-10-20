@@ -31,6 +31,7 @@
 #include "ConnectionLineBuilder.h"
 #include "MapCanvasData.h"
 #include "RoadIndex.h"
+#include "TerrainDoors.h"
 #include "TerrainEdges.h"
 #include "TerrainMaterials.h"
 #include "TerrainSprites.h"
@@ -61,7 +62,6 @@ struct NODISCARD VisitRoomOptions final
     SharedNamedColorOptions colorSettings;
     bool drawNotMappedExits = false;
     bool organicTerrain = false;
-    terrain_doors::Observation doors;
 };
 
 enum class NODISCARD StreamTypeEnum { OutFlow, InFlow };
@@ -861,7 +861,6 @@ private:
     std::unordered_map<Coordinate, uint32_t> m_wallMasks;
     std::unordered_map<Coordinate, uint32_t> m_buildingWalls;
     std::unordered_map<Coordinate, const RoomHandle *> m_roomHandles;
-    terrain_doors::Observation m_doors;
 
     NODISCARD std::optional<terrain_materials::Family> wallFamily(const RoomTerrainEnum terrain,
                                                                   const Coordinate &pos,
@@ -1021,12 +1020,6 @@ private:
         const auto variant = terrain_doors::variant(id,
                                                     paired ? peer->getIdExternal().asUint32() : 0u,
                                                     side < 2u ? 0u : 1u);
-        auto state = terrain_doors::State::UNKNOWN;
-        if (m_doors.serverRoom != 0 && room.getServerId().asUint32() == m_doors.serverRoom)
-            state = m_doors.states[side];
-        else if (paired && m_doors.serverRoom != 0
-                 && peer->getServerId().asUint32() == m_doors.serverRoom)
-            state = m_doors.states[side ^ 1u];
         const auto tex = m_textures.terrain_sprites.at(static_cast<std::size_t>(
             terrain_materials::atlas(m_textures.terrainGroundPacks[0], F::DOOR)));
         const auto pos = room.getPosition();
@@ -1040,12 +1033,12 @@ private:
                     | static_cast<int>(terrain_walls::rotation(side) << 4u);
         if (paired && (side == 1u || side == 3u))
             flags |= terrain_materials::DOOR_OTHER_SIDE;
-        if (state != terrain_doors::State::UNKNOWN)
-            flags |= terrain_materials::DOOR_KNOWN;
-        door.textureColor = {tex.position * 16 + static_cast<int>(variant)
-                                 + (state == terrain_doors::State::OPEN ? 6 : 0),
-                             static_cast<int>(NamedColorEnum::DEFAULT),
-                             0,
+        flags |= static_cast<int>(side << terrain_materials::DOOR_DIRECTION_SHIFT);
+        // Static identity only. The current observation selects state in the
+        // vertex shader, leaving this instance buffer valid across movement.
+        door.textureColor = {tex.position * 16 + static_cast<int>(variant),
+                             terrain_doors::roomWord(room.getServerId().asUint32()),
+                             terrain_doors::roomWord(paired ? peer->getServerId().asUint32() : 0u),
                              flags};
         m_data.spriteTexture = tex.array;
         m_data.doorSprites.emplace_back(door);
@@ -1138,13 +1131,11 @@ public:
                                const mctp::MapCanvasTexturesProxy &textures,
                                const OptBounds &bounds,
                                const bool organicTerrain,
-                               const RoomVector &rooms,
-                               const terrain_doors::Observation &doors)
+                               const RoomVector &rooms)
         : m_data{data}
         , m_textures{textures}
         , m_bounds{bounds}
         , m_organicTerrain{organicTerrain}
-        , m_doors{doors}
     {
         if (m_organicTerrain) {
             m_sectors.reserve(rooms.size());
@@ -1785,12 +1776,7 @@ NODISCARD static LayerMeshesIntermediate generateLayerMeshes(
     DECL_TIMER(t, "generateLayerMeshes");
 
     LayerBatchData data{textures.white_pixel};
-    LayerBatchBuilder builder{data,
-                              textures,
-                              bounds,
-                              visitRoomOptions.organicTerrain,
-                              rooms,
-                              visitRoomOptions.doors};
+    LayerBatchBuilder builder{data, textures, bounds, visitRoomOptions.organicTerrain, rooms};
     visitRooms(rooms, textures, builder, visitRoomOptions);
 
     data.sort();
@@ -1935,7 +1921,8 @@ void LayerMeshes::render(const int thisLayer,
                          const int focusedLayer,
                          const bool drawTerrainSprites,
                          const glm::vec4 &shadow,
-                         const float day)
+                         const float day,
+                         const glm::ivec4 &doorState)
 {
     // Disable texturing for this layer. We want to draw
     // all of the squares in white (using layer boost quads),
@@ -2059,7 +2046,8 @@ void LayerMeshes::render(const int thisLayer,
     if (!disableTextures && organicSelected && doorSprites)
         doorSprites.render(defaultState.withBlend(BlendModeEnum::TRANSPARENCY)
                                .withColor(Colors::white)
-                               .withTerrainDay(day));
+                               .withTerrainDay(day)
+                               .withTerrainDoors(doorState));
 
     // Safety markings must survive legacy load/mob overlays, foregrounds
     // and wall decoration. Keep this above every map-room artwork pass.
@@ -2112,11 +2100,9 @@ void InternalData::virt_finish(MapBatches &output, OpenGL &gl, GLFont &font) con
 // NOTE: All of the lamda captures are copied, including the texture data!
 FutureSharedMapBatchFinisher generateMapDataFinisher(const mctp::MapCanvasTexturesProxy &textures,
                                                      const std::shared_ptr<const FontMetrics> &font,
-                                                     const Map &map,
-                                                     const terrain_doors::Observation &doors)
+                                                     const Map &map)
 {
-    auto visitRoomOptions = getVisitRoomOptions();
-    visitRoomOptions.doors = doors;
+    const auto visitRoomOptions = getVisitRoomOptions();
 
     return std::async(std::launch::async,
                       [textures, font, map, visitRoomOptions]() -> SharedMapBatchFinisher {

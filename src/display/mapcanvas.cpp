@@ -102,15 +102,17 @@ MapCanvas::MapCanvas(MapData &mapData,
                                                   : FrameManager::AnimationStatusEnum::Stop;
     });
 
+    // Live door state is a draw uniform, not part of the map geometry.
+    // Invalidating meshes here clears the visible map on every movement.
     m_observer.sig2_connected.connect(m_lifetime, [this]() {
         m_terrainDoors.clear();
-        requestForceUpdateMeshes();
+        m_frameManager.requestUpdate();
     });
     m_observer.sig2_sentToUserGmcp.connect(m_lifetime, [this](const GmcpMessage &message) {
         if (message.isEventMoved() || message.isCoreGoodbye()) {
             if (m_terrainDoors.serverRoom != 0) {
                 m_terrainDoors.clear();
-                requestForceUpdateMeshes();
+                m_frameManager.requestUpdate();
             }
             return;
         }
@@ -119,7 +121,7 @@ MapCanvas::MapCanvas(MapData &mapData,
         const auto document = QJsonDocument::fromJson(message.getJson()->toQString().toUtf8());
         if (document.isObject()
             && m_terrainDoors.observe(document.object(), message.isRoomUpdateExits()))
-            requestForceUpdateMeshes();
+            m_frameManager.requestUpdate();
     });
 
     m_observer.sig2_tick.connect(m_lifetime, [this](const MumeMoment &moment) {
@@ -161,6 +163,7 @@ MapCanvas::MapCanvas(MapData &mapData,
 void MapCanvas::setTerrainPreviewMoment(std::optional<MumeMoment> moment)
 {
     m_terrainPreviewMoment = std::move(moment);
+    m_weather.setPreviewMoment(m_terrainPreviewMoment);
     if (m_terrainPreviewMoment.has_value()) {
         const MumeMoment &preview = *m_terrainPreviewMoment;
         const auto dawnDusk = MumeClock::getDawnDusk(preview.month);

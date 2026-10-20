@@ -17,7 +17,6 @@
 #include "MapBatches.h"
 #include "MapCanvasData.h"
 #include "RoadIndex.h"
-#include "TerrainDoors.h"
 
 #include <map>
 #include <optional>
@@ -178,8 +177,7 @@ struct NODISCARD Batches final
 NODISCARD FutureSharedMapBatchFinisher
 generateMapDataFinisher(const mctp::MapCanvasTexturesProxy &textures,
                         const std::shared_ptr<const FontMetrics> &font,
-                        const Map &map,
-                        const terrain_doors::Observation &doors = {});
+                        const Map &map);
 
 extern void finish(const IMapBatchesFinisher &finisher,
                    std::optional<MapBatches> &batches,

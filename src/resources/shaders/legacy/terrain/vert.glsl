@@ -3,6 +3,7 @@
 precision highp int;
 uniform mat4 uMVP;
 uniform vec4 uTerrainShadow;
+uniform ivec4 uTerrainDoors;
 uniform float uTerrainDay;
 layout(std140) uniform NamedColorsBlock
 {
@@ -92,11 +93,24 @@ void main()
     vWallMask = (aTextureColor.z >> 24) & 15;
     vWaterClip = ivec3(ivec2(floor(aAnchorSizeLayer.xy)), (aTextureColor.z >> 16) & 255);
     vWinter = allSeason ? 0.0 : mix(previous == 0 ? 1.0 : 0.0, following == 0 ? 1.0 : 0.0, baseFade);
-    vTiles = ivec2(aTextureColor.x + previous * 6, aTextureColor.x + following * 6);
+    int tile = aTextureColor.x;
+    bool door = kind == 12 && (aTextureColor.w & 256) != 0;
+    if (door) {
+        uint observed = uint(uTerrainDoors.x);
+        int direction = (aTextureColor.w >> 18) & 3;
+        int state = 0;
+        if (observed != 0u && uint(aTextureColor.y) == observed)
+            state = (uTerrainDoors.y >> (direction*2)) & 3;
+        else if (observed != 0u && uint(aTextureColor.z) == observed)
+            state = (uTerrainDoors.y >> ((direction^1)*2)) & 3;
+        vWallStyle = (vWallStyle & ~1024) | (state != 0 ? 1024 : 0);
+        tile += state == 2 ? 6 : 0;
+    }
+    vTiles = ivec2(tile + previous * 6, tile + following * 6);
     vTreeUV = uv;
     if ((kind == 10 || kind == 11) && ((aTextureColor.w >> 8) & 1) != 0) vTreeUV.x = 1.0 - vTreeUV.x;
     vSeasonMix = fade;
-    vColor = vec4(uNamedColors[kind == 13 ? 0 : aTextureColor.y].rgb, 1.0);
+    vColor = vec4(uNamedColors[kind == 13 || door ? 0 : aTextureColor.y].rgb, 1.0);
     if (uTerrainShadow.w > 0.5) {
         // Permanent shade/dark rooms do not receive direct-light shadows.
         vColor.a = aTextureColor.y == 0 && castsShadow && (aTextureColor.w & 8192) == 0 ? 1.0 : 0.0;

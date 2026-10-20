@@ -105,6 +105,7 @@ set(mmapper_SRCS
     display/TerrainSpritePacks.h
     display/TerrainSpritePacks.cpp
     display/TerrainWalls.h
+    display/TerrainTwilight.h
     display/TerrainLighting.h
     display/connectionselection.cpp
     display/connectionselection.h
@@ -301,6 +302,8 @@ set(mmapper_SRCS
     mainwindow/mainwindow-async.h
     mainwindow/mainwindow-compact.cpp
     mainwindow/mainwindow-saveslots.cpp
+    mainwindow/TerrainPreviewClock.cpp
+    mainwindow/TerrainPreviewClock.h
     mainwindow/mainwindow.cpp
     mainwindow/mainwindow.h
     mainwindow/metatypes.cpp

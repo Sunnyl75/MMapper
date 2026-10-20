@@ -85,18 +85,20 @@ GL.glViewport(0,0,256,256)
 class Instance(C.Structure):
     _fields_ = [('pos', C.c_float * 4), ('data', C.c_int * 4)]
 
-def render(kind, here=7, sides=(1,1,1,1), mask=3, seed=12345, day=180, size=1, neighbours=0, wide=False, shade=1, walls=0, shadow=False, raw=None, sky=(.2,.8), light=0.0):
+def render(kind, here=7, sides=(1,1,1,1), mask=3, seed=12345, day=180, size=1, neighbours=0, wide=False, shade=1, walls=0, shadow=False, raw=None, sky=(.2,.8), light=0.0, doors=(0,0), reuse=False):
     packed = here | sum(s << (4 * (i + 1)) for i, s in enumerate(sides))
     instance = Instance((C.c_float * 4)(.5,.5,size,0),
                         (C.c_int * 4)(packed,0,seed | neighbours << 16 | walls << 24,kind | mask << 4))
     if raw is not None:
         instance.data = (C.c_int * 4)(*raw)
-    GL.glBufferData(GL.GL_ARRAY_BUFFER, C.sizeof(instance), C.byref(instance), GL.GL_STATIC_DRAW)
+    if not reuse:
+        GL.glBufferData(GL.GL_ARRAY_BUFFER, C.sizeof(instance), C.byref(instance), GL.GL_STATIC_DRAW)
     view = (C.c_float * 16)(2/3,0,0,0, 0,2/3,0,0, 0,0,1,0, -1/3,-1/3,0,1) if wide else matrix
     GL.glUniformMatrix4fv(GL.glGetUniformLocation(program, 'uMVP'),1,False,view)
     GL.glUniform4f(GL.glGetUniformLocation(program, 'uTerrainShadow'),*sky,.3 if shadow else light,1 if shadow else 0)
     GL.glUniform4f(GL.glGetUniformLocation(program, 'uColor'),shade,shade,shade,1)
     GL.glUniform1f(GL.glGetUniformLocation(program, 'uTerrainDay'), day)
+    GL.glUniform4i(GL.glGetUniformLocation(program, 'uTerrainDoors'), C.c_int(doors[0]).value,doors[1],0,0)
     GL.glClearColor(0,0,0,0)
     GL.glClear(GL.GL_COLOR_BUFFER_BIT)
     GL.glDrawArraysInstanced(GL.GL_TRIANGLE_STRIP, 0, 4, 1)
@@ -557,10 +559,11 @@ if len(sys.argv) > 3:
     review = Image.new('RGBA',(1536,640),(110,105,95,255))
     for variant in range(6):
         for state in [0,6]:
-            flags = 12 | 4096 | 8192 | 256 | 1024
-            first = render(flags,raw=(variant+state,0,0,flags),mask=0)
-            other_flags = flags | 512 | (2 << 4)
-            second = render(other_flags,raw=(variant+state,0,0,other_flags),mask=0)
+            flags = 12 | 4096 | 8192 | 256
+            observed = (101,2 if state == 6 else 1)
+            first = render(flags,raw=(variant,101,202,flags),mask=0,doors=observed)
+            other_flags = flags | 512 | (2 << 4) | (1 << 18)
+            second = render(other_flags,raw=(variant,202,101,other_flags),mask=0,doors=observed)
             check(alpha(first).getbbox() is not None)
             check(alpha(second).getbbox() is not None)
             # Across the room boundary, opposing halves sample adjacent rows
@@ -577,9 +580,24 @@ if len(sys.argv) > 3:
             pair.alpha_composite(second.transpose(Image.Transpose.FLIP_TOP_BOTTOM),(0,0))
             pair.alpha_composite(first.transpose(Image.Transpose.FLIP_TOP_BOTTOM),(0,256))
             review.alpha_composite(pair.crop((0,128,256,448)),(variant*256,(state//6)*320))
-        closed = render(flags,raw=(variant,0,0,flags),mask=0)
-        opened = render(flags,raw=(variant+6,0,0,flags),mask=0)
+        closed = render(flags,raw=(variant,101,202,flags),mask=0,doors=(101,1))
+        # Same VBO, different uniform: live state must not rebuild/upload geometry.
+        opened = render(flags,mask=0,doors=(101,2),reuse=True)
         check(closed.tobytes() != opened.tobytes())
+        check(render(flags,mask=0,doors=(101,1),reuse=True).tobytes() == closed.tobytes())
+        unknown = render(flags,mask=0,doors=(0,0),reuse=True)
+        check(unknown.tobytes() != closed.tobytes())
+        check(render(flags,mask=0,doors=(999,2),reuse=True).tobytes() == unknown.tobytes())
+        # A paired peer's reverse direction is the same physical door state.
+        check(render(flags,mask=0,doors=(202,2 << 2),reuse=True).tobytes() == opened.tobytes())
+        for side,turn in enumerate([0,2,3,1]):
+            style=flags | (side << 18) | (turn << 4)
+            own=render(style,raw=(variant,0xffffffff,202,style),doors=(0xffffffff,2 << (side*2)))
+            peer=render(style,doors=(202,2 << ((side^1)*2)),reuse=True)
+            check(own.tobytes() == peer.tobytes())
+        # One-way instances cannot borrow observations from an absent peer.
+        single=render(flags,raw=(variant,101,0,flags),doors=(999,2))
+        check(single.tobytes() == render(flags,doors=(0,0),reuse=True).tobytes())
     review.save(atlas_dir.parent / ('doors-shader-review-' + api + '.png'))
     examples.append(opened)
 print('PASS', checks, 'render assertions')

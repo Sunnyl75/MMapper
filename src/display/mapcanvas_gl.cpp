@@ -534,8 +534,7 @@ void MapCanvas::updateMapBatches()
     auto getFuture = [this]() {
         MMLOG() << "[updateMapBatches] calling generateBatches";
         return m_data.generateBatches(mctp::getProxy(m_textures),
-                                      getGLFont().getSharedFontMetrics(),
-                                      m_terrainDoors);
+                                      getGLFont().getSharedFontMetrics());
     };
 
     remeshCookie.set(getFuture());
@@ -1151,6 +1150,8 @@ void MapCanvas::renderMapBatches()
     BatchedMeshes &batchedMeshes = batches.batchedMeshes;
 
     const auto shadow = m_terrainShadow;
+    const auto words = m_terrainDoors.renderState();
+    const glm::ivec4 doorState{words[0], words[1], words[2], words[3]};
     const float terrainDay = settings.seasonalTerrain.get() ? m_terrainDay : -1.f;
     const auto drawLayer = [&batches,
                             &batchedMeshes,
@@ -1158,11 +1159,12 @@ void MapCanvas::renderMapBatches()
                             wantDoorNames,
                             wantTerrainSprites,
                             shadow,
-                            terrainDay](const int thisLayer, const int currentLayer) {
+                            terrainDay,
+                            doorState](const int thisLayer, const int currentLayer) {
         const auto it_mesh = batchedMeshes.find(thisLayer);
         if (it_mesh != batchedMeshes.end()) {
             LayerMeshes &meshes = it_mesh->second;
-            meshes.render(thisLayer, currentLayer, wantTerrainSprites, shadow, terrainDay);
+            meshes.render(thisLayer, currentLayer, wantTerrainSprites, shadow, terrainDay, doorState);
         }
 
         if (wantExtraDetail) {

@@ -137,10 +137,9 @@ std::optional<RoomId> MapData::getLast(const RoomId start, const CommandQueue &d
 }
 
 FutureSharedMapBatchFinisher MapData::generateBatches(const mctp::MapCanvasTexturesProxy &textures,
-                                                      const std::shared_ptr<const FontMetrics> &font,
-                                                      const terrain_doors::Observation &doors)
+                                                      const std::shared_ptr<const FontMetrics> &font)
 {
-    return generateMapDataFinisher(textures, font, getCurrentMap(), doors);
+    return generateMapDataFinisher(textures, font, getCurrentMap());
 }
 
 void MapData::applyChangesToList(const RoomSelection &sel,
