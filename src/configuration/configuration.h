@@ -179,6 +179,9 @@ public:
         // Legacy::Functions::setRenderScale()).
         NamedConfig<int> renderScale{"RENDER_SCALE", 100};
         NamedConfig<bool> organicTerrain{"ORGANIC_TERRAIN", false};
+        NamedConfig<bool> roomIllumination{"ROOM_ILLUMINATION", true};
+        NamedConfig<int> roomLightStrength{"ROOM_LIGHT_STRENGTH", 100};
+        NamedConfig<int> roomLightFlicker{"ROOM_LIGHT_FLICKER", 35};
         NamedConfig<bool> seasonalTerrain{"SEASONAL_TERRAIN", true};
         NamedConfig<bool> trilinearFiltering{"TRILINEAR_FILTERING", true};
         NamedConfig<bool> showMissingMapId{"SHOW_MISSING_MAPID", false};

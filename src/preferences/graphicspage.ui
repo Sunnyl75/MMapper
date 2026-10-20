@@ -205,6 +205,16 @@
       <property name="spacing">
        <number>6</number>
       </property>
+      <item row="3" column="0" colspan="2">
+       <widget class="QCheckBox" name="roomIllumination">
+        <property name="text"><string>Warm room illumination</string></property>
+        <property name="toolTip"><string>Illuminate enclosed rooms marked lit and fixed lights inferred from descriptions. Artificial light observed in the current room adds temporary illumination. Requires organic terrain.</string></property>
+       </widget>
+      </item>
+      <item row="4" column="0"><widget class="QLabel" name="roomLightStrengthLabel"><property name="text"><string>Light strength</string></property><property name="buddy"><cstring>roomLightStrength</cstring></property></widget></item>
+      <item row="4" column="1"><widget class="QSpinBox" name="roomLightStrength"><property name="suffix"><string>%</string></property><property name="maximum"><number>100</number></property><property name="value"><number>100</number></property></widget></item>
+      <item row="5" column="0"><widget class="QLabel" name="roomLightFlickerLabel"><property name="text"><string>Flicker amount</string></property><property name="buddy"><cstring>roomLightFlicker</cstring></property></widget></item>
+      <item row="5" column="1"><widget class="QSpinBox" name="roomLightFlicker"><property name="suffix"><string>%</string></property><property name="toolTip"><string>Each room has its own brightness, warmth, phase and speed. Set to zero for steady light.</string></property><property name="maximum"><number>100</number></property><property name="value"><number>35</number></property></widget></item>
       <item row="2" column="0" colspan="2">
        <widget class="QCheckBox" name="seasonalTerrain">
         <property name="text"><string>Seasonal terrain</string></property>

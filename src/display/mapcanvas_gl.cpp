@@ -116,6 +116,7 @@ void setShowPerfStats(const bool show)
 
 void MapCanvas::hostCleanupGL()
 {
+    m_roomLightTimer.stop();
     // NOTE: The caller (the host facade) is responsible for making sure a GL
     // context is current before calling this function.
     const auto fname = MM_SOURCE_LOCATION().function_name();
@@ -132,6 +133,7 @@ void MapCanvas::hostCleanupGL()
     // and it also owns the lifetime of some OpenGL objects (e.g. VBOs).
     m_batches.resetExistingMeshesAndIgnorePendingRemesh();
     m_weather.cleanup();
+    m_roomLighting.cleanup(getOpenGL());
     m_textures.destroyAll();
     getGLFont().cleanup();
     getOpenGL().cleanup();
@@ -686,11 +688,25 @@ void MapCanvas::actuallyPaintGL()
             gl.clear(Color{getConfig().canvas.backgroundColor});
 
             if (m_data.isEmpty()) {
+                m_roomLightTimer.stop();
+                m_roomLightState = {};
                 getGLFont().renderTextCentered("No map loaded");
             } else {
                 // Update animation state
                 m_weather.update();
+                m_roomLightState = m_roomLighting.prepare(gl,
+                                                          m_data,
+                                                          getCurrentLayer(),
+                                                          getViewProj(),
+                                                          getTotalScaleFactor()
+                                                              >= terrain_sprites::ZOOM_CUTOFF);
 
+                if (m_roomLighting.isAnimating()) {
+                    if (!m_roomLightTimer.isActive())
+                        m_roomLightTimer.start();
+                } else {
+                    m_roomLightTimer.stop();
+                }
                 paintMap();
                 paintBatchedInfomarks();
                 paintSelections();
@@ -700,9 +716,10 @@ void MapCanvas::actuallyPaintGL()
                 m_weather.prepare();
                 gl.getUboManager().bind(funcs, Legacy::SharedVboEnum::TimeBlock);
 
-                m_weather.render(m_opengl.getDefaultRenderState());
+                m_weather.render(m_roomLightState);
             }
         } catch (...) {
+            m_roomLightTimer.stop();
             paintSucceeded = false;
             QString msg;
             try {
@@ -1153,7 +1170,8 @@ void MapCanvas::renderMapBatches()
     const auto words = m_terrainDoors.renderState();
     const glm::ivec4 doorState{words[0], words[1], words[2], words[3]};
     const float terrainDay = settings.seasonalTerrain.get() ? m_terrainDay : -1.f;
-    const auto drawLayer = [&batches,
+    const auto drawLayer = [this,
+                            &batches,
                             &batchedMeshes,
                             wantExtraDetail,
                             wantDoorNames,
@@ -1164,7 +1182,13 @@ void MapCanvas::renderMapBatches()
         const auto it_mesh = batchedMeshes.find(thisLayer);
         if (it_mesh != batchedMeshes.end()) {
             LayerMeshes &meshes = it_mesh->second;
-            meshes.render(thisLayer, currentLayer, wantTerrainSprites, shadow, terrainDay, doorState);
+            meshes.render(thisLayer,
+                          currentLayer,
+                          wantTerrainSprites,
+                          shadow,
+                          terrainDay,
+                          doorState,
+                          m_roomLightState);
         }
 
         if (wantExtraDetail) {

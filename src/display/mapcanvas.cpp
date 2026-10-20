@@ -37,6 +37,7 @@
 #include <vector>
 
 #include <QGestureEvent>
+#include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMessageLogContext>
@@ -100,6 +101,28 @@ MapCanvas::MapCanvas(MapData &mapData,
     m_frameManager.registerCallback(m_lifetime, [this]() {
         return m_batches.remeshCookie.isPending() ? FrameManager::AnimationStatusEnum::Continue
                                                   : FrameManager::AnimationStatusEnum::Stop;
+    });
+
+    m_roomLightTimer.setInterval(84); // At most 12 updates/s; steady light has no timer.
+    connect(&m_roomLightTimer, &QTimer::timeout, this, [this]() {
+        const auto state = QGuiApplication::applicationState();
+        if (state != Qt::ApplicationHidden && state != Qt::ApplicationSuspended)
+            m_frameManager.requestUpdate();
+    });
+    const auto redrawLighting = [this]() { m_frameManager.requestUpdate(); };
+    setConfig().canvas.roomIllumination.registerChangeCallback(m_lifetime, redrawLighting);
+    setConfig().canvas.roomLightStrength.registerChangeCallback(m_lifetime, redrawLighting);
+    setConfig().canvas.roomLightFlicker.registerChangeCallback(m_lifetime, redrawLighting);
+    m_observer.sig2_connected.connect(m_lifetime, [this]() {
+        m_roomLighting.clearObservation();
+        m_frameManager.requestUpdate();
+    });
+    m_observer.sig2_sentToUserGmcp.connect(m_lifetime, [this](const GmcpMessage &message) {
+        if (message.isRoomInfo() || message.isCharVitals() || message.isEventMoved()
+            || message.isCoreGoodbye()) {
+            if (m_roomLighting.observe(message))
+                m_frameManager.requestUpdate();
+        }
     });
 
     // Live door state is a draw uniform, not part of the map geometry.

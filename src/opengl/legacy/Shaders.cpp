@@ -23,7 +23,12 @@ NODISCARD static std::string readWholeResourceFile(const std::string &fullPath)
 NODISCARD static ShaderUtils::Source readWholeShader(const std::string &dir, const std::string &name)
 {
     const auto fullPathName = ":/shaders/legacy/" + dir + "/" + name;
-    return ShaderUtils::Source{fullPathName, readWholeResourceFile(fullPathName)};
+    auto source = readWholeResourceFile(fullPathName);
+    if (name == "frag.glsl"
+        && (dir == "terrain" || dir == "room/tex/acolor" || dir == "weather/timeofday")) {
+        source = readWholeResourceFile(":/shaders/legacy/room-lighting.glsl") + "\n" + source;
+    }
+    return ShaderUtils::Source{fullPathName, std::move(source)};
 }
 
 namespace Legacy {

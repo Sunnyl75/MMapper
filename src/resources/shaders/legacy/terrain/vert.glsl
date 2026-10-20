@@ -20,6 +20,7 @@ flat out vec3 vBaseColor;
 flat out ivec3 vSurface;
 flat out float vWinter;
 out vec2 vWorldUV;
+flat out float vRoomLayer;
 flat out ivec2 vGroundSeasons;
 flat out float vGroundMix;
 flat out int vSharedBase;
@@ -90,6 +91,7 @@ void main()
     vGroundSeasons = ivec2(previous, following);
     vGroundMix = baseFade;
     vWorldUV = p;
+    vRoomLayer = aAnchorSizeLayer.w;
     vWallMask = (aTextureColor.z >> 24) & 15;
     vWaterClip = ivec3(ivec2(floor(aAnchorSizeLayer.xy)), (aTextureColor.z >> 16) & 255);
     vWinter = allSeason ? 0.0 : mix(previous == 0 ? 1.0 : 0.0, following == 0 ? 1.0 : 0.0, baseFade);

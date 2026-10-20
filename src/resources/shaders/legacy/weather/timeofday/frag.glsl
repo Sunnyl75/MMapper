@@ -68,7 +68,9 @@ vec3 oklabToLinear(vec3 c)
                 -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s);
 }
 
-void main()
+in vec3 vRoomLightPlane;
+
+void skyOverlay()
 {
     if (uSkyTint.a >= 0.0) {
         vFragmentColor = uSkyTint;
@@ -102,4 +104,22 @@ void main()
     finalAlpha *= currentTimeOfDayIntensity;
 
     vFragmentColor = vec4(mixedSrgb, finalAlpha);
+}
+
+void main()
+{
+    skyOverlay();
+    if (uRoomLightParams.x <= 0.0) return;
+    if (abs(vRoomLightPlane.z) < 0.000001) return;
+    vec4 light = roomIllumination(vec3(vRoomLightPlane.xy/vRoomLightPlane.z,uRoomLightParams.w));
+    float skyAlpha = vFragmentColor.a*(1.0-light.a);
+    float warmAlpha = light.a*0.24;
+    // The cached blue channel is corner shadow; it also works in lit interiors
+    // where there is no night overlay to remove.
+    float shadowAlpha = light.b;
+    float underAlpha = shadowAlpha+skyAlpha*(1.0-shadowAlpha);
+    float alpha = warmAlpha+underAlpha*(1.0-warmAlpha);
+    vec3 warmth = vec3(1.0,light.g,0.34);
+    vec3 rgb = warmth*warmAlpha+vFragmentColor.rgb*skyAlpha*(1.0-shadowAlpha)*(1.0-warmAlpha);
+    vFragmentColor = vec4(alpha>0.0 ? rgb/alpha : vec3(0.0),alpha);
 }

@@ -506,3 +506,10 @@ target_link_libraries(TestTerrainPreviewClock PRIVATE mm_test mm_global
     Qt6::Network Qt6::Gui Qt6::Test Qt6::Widgets coverage_config)
 set_target_properties(TestTerrainPreviewClock PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
 add_test(NAME TestTerrainPreviewClock COMMAND TestTerrainPreviewClock)
+
+add_executable(TestTerrainRoomLighting TestTerrainRoomLighting.cpp
+    ../src/display/TerrainRoomLightRules.cpp ../src/display/TerrainLightMask.cpp)
+target_compile_definitions(TestTerrainRoomLighting PRIVATE TERRAIN_ASSET_DIR="${CMAKE_SOURCE_DIR}/src/resources/pixmaps")
+target_link_libraries(TestTerrainRoomLighting PRIVATE Qt6::Gui coverage_config)
+set_target_properties(TestTerrainRoomLighting PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainRoomLighting COMMAND TestTerrainRoomLighting)

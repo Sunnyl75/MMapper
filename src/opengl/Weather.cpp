@@ -526,10 +526,11 @@ void GLWeather::render(const GLRenderState &rs)
     const auto &wb = m_gl.getUboManager().get<Legacy::SharedVboEnum::WeatherBlock>();
     const auto currentStartColor = static_cast<NamedColorEnum>(static_cast<int>(wb.timeOfDay.x));
     const bool useSkyTint = m_skyTint.a >= 0.f;
-    if (useSkyTint ? m_skyTint.a > 0.f
-                   : m_currentTimeOfDay != MumeTimeEnum::DAY
-                         || currentStartColor != NamedColorEnum::TRANSPARENT
-                         || m_currentTimeOfDayIntensity > 0.f) {
+    if (rs.uniforms.roomLightParams.x > 0.f
+        || (useSkyTint ? m_skyTint.a > 0.f
+                       : m_currentTimeOfDay != MumeTimeEnum::DAY
+                             || currentStartColor != NamedColorEnum::TRANSPARENT
+                             || m_currentTimeOfDayIntensity > 0.f)) {
         if (m_timeOfDay)
             m_timeOfDay.render(atmosphereRs.withSkyTint(m_skyTint));
     }

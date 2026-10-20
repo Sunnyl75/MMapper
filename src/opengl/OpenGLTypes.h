@@ -259,7 +259,11 @@ struct NODISCARD GLRenderState final
         float terrainDay = -1.f;                // Unknown/disabled uses summer artwork.
         glm::vec4 terrainShadow{0.f};           // projection x/y, opacity, shadow-pass flag
         glm::vec4 skyTint{0.f, 0.f, 0.f, -1.f}; // Negative alpha keeps legacy time-of-day mode.
-        glm::ivec4 terrainDoors{0};             // observed server room ID bits, packed states
+        glm::ivec4 roomLightGrid{0};
+        glm::vec4 roomLightParams{0.f};
+        glm::mat4 roomLightInverse{1.f};
+        int roomLightTintPass = 0;
+        glm::ivec4 terrainDoors{0}; // observed server room ID bits, packed states
     };
 
     Uniforms uniforms;

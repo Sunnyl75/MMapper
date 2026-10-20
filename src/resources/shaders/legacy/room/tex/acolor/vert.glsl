@@ -10,6 +10,7 @@ layout(std140) uniform NamedColorsBlock
 layout(location = 0) in ivec4 aVertTexCol;
 
 out vec4 vColor;
+out vec3 vRoomWorld;
 out vec3 vTexCoord;
 
 void main()
@@ -36,5 +37,6 @@ void main()
 
     vColor = uNamedColors[colorId];
     vTexCoord = vec3(ioffset.xy, float(texZ));
-    gl_Position = uMVP * vec4(aVertTexCol.xyz + ioffset, 1.0);
+    vRoomWorld = vec3(aVertTexCol.xyz + ioffset);
+    gl_Position = uMVP * vec4(vRoomWorld, 1.0);
 }

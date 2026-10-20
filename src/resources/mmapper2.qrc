@@ -245,6 +245,8 @@
         <file>shaders/legacy/line/ucolor/frag.glsl</file>
         <file>shaders/legacy/line/ucolor/vert.glsl</file>
         <file>shaders/legacy/terrain/frag.glsl</file>
+        <file>pixmaps/terrain-light-masks.png</file>
+        <file>shaders/legacy/room-lighting.glsl</file>
         <file>shaders/legacy/terrain/vert.glsl</file>
         <file>shaders/legacy/room/tex/acolor/frag.glsl</file>
         <file>shaders/legacy/room/tex/acolor/vert.glsl</file>

@@ -106,6 +106,12 @@ set(mmapper_SRCS
     display/TerrainSpritePacks.cpp
     display/TerrainWalls.h
     display/TerrainTwilight.h
+    display/TerrainLightMask.cpp
+    display/TerrainLightMask.h
+    display/TerrainRoomLighting.cpp
+    display/TerrainRoomLighting.h
+    display/TerrainRoomLightRules.cpp
+    display/TerrainRoomLightRules.h
     display/TerrainLighting.h
     display/connectionselection.cpp
     display/connectionselection.h
@@ -1055,7 +1061,9 @@ if(NOT CPACK_PACKAGE_VERSION_TWEAK)
 endif()
 
 string(REGEX REPLACE "Darwin" "Mac" CPACK_SYSTEM_NAME ${CMAKE_SYSTEM_NAME})
-set(CPACK_SOURCE_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CPACK_PACKAGE_VERSION}-source")
+# Keep Git tag names safe for package filenames.
+string(REGEX REPLACE "[^A-Za-z0-9._-]" "-" MMAPPER_PACKAGE_FILENAME_VERSION "${CPACK_PACKAGE_VERSION}")
+set(CPACK_SOURCE_PACKAGE_FILE_NAME "${PROJECT_NAME}-${MMAPPER_PACKAGE_FILENAME_VERSION}-source")
 set(CPACK_PACKAGE_CHECKSUM "SHA256")
 if(NOT TARGET_ARCHITECTURE)
     if(WIN32)
@@ -1065,7 +1073,7 @@ if(NOT TARGET_ARCHITECTURE)
     endif()
 endif()
 message(STATUS "Packaging for target: ${CPACK_SYSTEM_NAME} ${TARGET_ARCHITECTURE} ${PACKAGE_TYPE_NORMALIZED}")
-set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CPACK_PACKAGE_VERSION}-${CPACK_SYSTEM_NAME}-${TARGET_ARCHITECTURE}")
+set(CPACK_PACKAGE_FILE_NAME "${PROJECT_NAME}-${MMAPPER_PACKAGE_FILENAME_VERSION}-${CPACK_SYSTEM_NAME}-${TARGET_ARCHITECTURE}")
 
 # Components:
 if(CMAKE_BUILD_TYPE_UPPER MATCHES "^(DEBUG|RELWITHDEBINFO)$")

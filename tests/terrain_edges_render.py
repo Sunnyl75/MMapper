@@ -37,13 +37,16 @@ header += '#define MAX_NAMED_COLORS 256\n'
 program = GL.glCreateProgram()
 for stage, kind in [('vert', GL.GL_VERTEX_SHADER), ('frag', GL.GL_FRAGMENT_SHADER)]:
     shader = GL.glCreateShader(kind)
-    GL.glShaderSource(shader, header + (root / f'src/resources/shaders/legacy/terrain/{stage}.glsl').read_text())
+    source = (root / f'src/resources/shaders/legacy/terrain/{stage}.glsl').read_text()
+    if stage == 'frag': source = (root/'src/resources/shaders/legacy/room-lighting.glsl').read_text()+'\n'+source
+    GL.glShaderSource(shader, header + source)
     GL.glCompileShader(shader)
     assert GL.glGetShaderiv(shader, GL.GL_COMPILE_STATUS), GL.glGetShaderInfoLog(shader)
     GL.glAttachShader(program, shader)
 GL.glLinkProgram(program)
 assert GL.glGetProgramiv(program, GL.GL_LINK_STATUS), GL.glGetProgramInfoLog(program)
 GL.glUseProgram(program)
+GL.glUniform1i(GL.glGetUniformLocation(program,'uRoomLights'),1)
 GL.glBindVertexArray(GL.glGenVertexArrays(1))
 ubo = GL.glGenBuffers(1)
 GL.glBindBuffer(GL.GL_UNIFORM_BUFFER, ubo)

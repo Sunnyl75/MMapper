@@ -47,7 +47,8 @@ struct NODISCARD LayerMeshes final
                 bool drawTerrainSprites,
                 const glm::vec4 &shadow,
                 float day,
-                const glm::ivec4 &doorState);
+                const glm::ivec4 &doorState,
+                const GLRenderState &lighting);
     explicit operator bool() const { return isValid; }
 };
 

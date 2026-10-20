@@ -1922,7 +1922,8 @@ void LayerMeshes::render(const int thisLayer,
                          const bool drawTerrainSprites,
                          const glm::vec4 &shadow,
                          const float day,
-                         const glm::ivec4 &doorState)
+                         const glm::ivec4 &doorState,
+                         const GLRenderState &lighting)
 {
     // Disable texturing for this layer. We want to draw
     // all of the squares in white (using layer boost quads),
@@ -1932,7 +1933,7 @@ void LayerMeshes::render(const int thisLayer,
 
     const bool organicSelected = drawTerrainSprites && thisLayer == focusedLayer;
 
-    const GLRenderState defaultState;
+    const GLRenderState defaultState = organicSelected ? lighting : GLRenderState{};
     const GLRenderState less = defaultState.withDepthFunction(DepthFunctionEnum::LESS);
     const GLRenderState equal = defaultState.withDepthFunction(DepthFunctionEnum::EQUAL);
     const GLRenderState lequal = defaultState.withDepthFunction(DepthFunctionEnum::LEQUAL);
@@ -1968,7 +1969,9 @@ void LayerMeshes::render(const int thisLayer,
     for (const RoomTintEnum tint : ALL_ROOM_TINTS) {
         static_assert(NUM_ROOM_TINTS == 2);
         if (const UniqueMesh &mesh = tints[tint]) {
-            mesh.render(equal_multiplied);
+            auto tintState = equal_multiplied;
+            tintState.uniforms.roomLightTintPass = 1;
+            mesh.render(tintState);
         }
     }
 

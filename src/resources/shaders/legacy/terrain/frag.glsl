@@ -13,6 +13,7 @@ flat in vec3 vBaseColor;
 flat in ivec3 vSurface;
 flat in float vWinter;
 in vec2 vWorldUV;
+flat in float vRoomLayer;
 flat in ivec2 vGroundSeasons;
 flat in float vGroundMix;
 flat in int vSharedBase;
@@ -374,6 +375,11 @@ float treeShadowAlpha(int tile, vec2 at) {
     alpha += sampleTile(tile,at-vec2(radius,radius)).a*0.15;
     return alpha;
 }
+vec4 litTerrainColor()
+{
+    float light = roomIllumination(vec3(vWorldUV,vRoomLayer)).a;
+    return vec4(mix(vColor.rgb,vec3(1.0),light),vColor.a);
+}
 void main()
 {
     // Derivatives must be taken before per-pixel cap/mitre branches. Implicit
@@ -390,7 +396,7 @@ void main()
         return;
     }
     if (vKind == 15) {
-        vFragmentColor = repeatMaterial(vTiles.x/16, vWorldUV) * vColor * uColor;
+        vFragmentColor = repeatMaterial(vTiles.x/16, vWorldUV) * litTerrainColor() * uColor;
         return;
     }
 
@@ -414,11 +420,11 @@ void main()
         } else {
             texel = vKind == 4 ? bank(vTreeUV) : route(vTreeUV, vKind == 5);
         }
-        vFragmentColor = texel * vColor * uColor;
+        vFragmentColor = texel * litTerrainColor() * uColor;
         return;
     }
     if (vKind == 3) {
-        vFragmentColor = vec4(groundFill(here(),vWorldUV), 1.0) * vColor * uColor;
+        vFragmentColor = vec4(groundFill(here(),vWorldUV), 1.0) * litTerrainColor() * uColor;
         return;
     }
     if (vKind == 9) {
@@ -427,7 +433,7 @@ void main()
         const vec3 waterColors[4] = vec3[4](vec3(0.32,0.43,0.48),
             vec3(0.29,0.43,0.47),vec3(0.25,0.40,0.43),vec3(0.29,0.39,0.44));
         vec3 water = mix(waterColors[vGroundSeasons.x], waterColors[vGroundSeasons.y], vGroundMix);
-        vFragmentColor = vec4(water,1.0) * vColor * uColor;
+        vFragmentColor = vec4(water,1.0) * litTerrainColor() * uColor;
         return;
     }
     if (vKind == 11 || vKind == 2) {
@@ -452,7 +458,7 @@ void main()
             art.rgb = mix(vec3(0.02),art.rgb,art.a);
             art.a = 1.0;
         }
-        vFragmentColor = art*vColor*uColor;
+        vFragmentColor = art*litTerrainColor()*uColor;
         return;
     }
     if (vKind == 12) {
@@ -481,7 +487,7 @@ void main()
                 float aa = max(fwidth(distance),0.002);
                 art.a *= 1.0-smoothstep(radius-aa,radius+aa,distance);
             }
-            vFragmentColor = art*vColor*uColor;
+            vFragmentColor = art*litTerrainColor()*uColor;
             return;
         }
         if ((vWallStyle & 512) != 0) {
@@ -492,14 +498,14 @@ void main()
                 // The convex return includes the continuous gutter turn.
                 // Euclidean distance softens its outer corner naturally.
                 float distance = length(max(vec2(at.x,inset)-vec2(depth),vec2(0)));
-                vFragmentColor = gutter(distance,gutterDepth)*vColor*uColor;
+                vFragmentColor = gutter(distance,gutterDepth)*litTerrainColor()*uColor;
                 return;
             }
             // Dedicated square artwork for this quadrant; both axes use the
             // same scale, preserving every drawn shingle and masonry block.
             vec2 uv = vec2(at.x/depth,1.0-inset/depth);
             vec4 art = sampleTileGrad(vTiles.x,uv,textureDx/depth,textureDy/depth);
-            vFragmentColor = art*vColor*uColor;
+            vFragmentColor = art*litTerrainColor()*uColor;
             return;
         }
         int rotation = (vWallStyle >> 4) & 3;
@@ -509,7 +515,7 @@ void main()
             && at.x > 1.0-depth && inset < depth) discard;
         vec4 cap = wallCap(at,textureDx,textureDy,depth,eave,adjacent);
         if (cap.a > 0.0) {
-            vFragmentColor = cap*vColor*uColor;
+            vFragmentColor = cap*litTerrainColor()*uColor;
             return;
         }
         // Clip BEFORE sampling: clamping narrow wall UVs would bleed adjacent
@@ -528,7 +534,7 @@ void main()
                 channel.a *= smoothstep(0.0,0.04,at.x);
             if ((ends & 2) != 0 && (vWallMask & (1 << adjacent.y)) == 0)
                 channel.a *= smoothstep(0.0,0.04,1.0-at.x);
-            vFragmentColor = channel*vColor*uColor;
+            vFragmentColor = channel*litTerrainColor()*uColor;
             return;
         }
         float scale = (eave ? 0.24 : 0.20)/depth;
@@ -595,7 +601,7 @@ void main()
             texel.a = mix(treeShadowAlpha(vTiles.x,at),treeShadowAlpha(vTiles.y,at),vSeasonMix);
         }
         vFragmentColor = vec4(0.025, 0.035, 0.05,
-                              texel.a * uTerrainShadow.z * vColor.a * uColor.a);
+                              texel.a * uTerrainShadow.z * litTerrainColor().a * uColor.a);
     } else {
         if (castsShadow && (vWallStyle & 8192) == 0 && uTerrainShadow.z > 0.0) {
             // A shared rounded normal proxy, not extra per-sprite geometry.
@@ -611,6 +617,6 @@ void main()
             // model follows the moon, at its existing much lower intensity.
             texel.rgb *= 1.0-strength*0.42*(1.0-incidence);
         }
-        vFragmentColor = texel * vColor * uColor;
+        vFragmentColor = texel * litTerrainColor() * uColor;
     }
 }
