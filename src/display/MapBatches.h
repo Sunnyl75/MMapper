@@ -17,10 +17,19 @@ struct NODISCARD LayerMeshes final
     UniqueMesh organicGroundBase;
     UniqueMesh groundSprites;
     UniqueMesh terrainSprites;
+    UniqueMesh terrainEdges;
+    UniqueMesh terrainWalls;
+    UniqueMesh roofCaps;
+    UniqueMesh doorSprites;
+    UniqueMesh warningSprites;
+    UniqueMesh wallShadows;
+    UniqueMesh wallGrime;
+    UniqueMeshVector legacyTrails;
     UniqueMeshVector trails;
     RoomTintArray<UniqueMesh> tints;
     UniqueMeshVector overlays;
     UniqueMeshVector doors;
+    UniqueMeshVector legacyDoorLines;
     UniqueMeshVector walls;
     UniqueMeshVector dottedWalls;
     UniqueMeshVector upDownExits;
@@ -37,7 +46,8 @@ struct NODISCARD LayerMeshes final
                 int focusedLayer,
                 bool drawTerrainSprites,
                 const glm::vec4 &shadow,
-                float day);
+                float day,
+                const glm::ivec4 &doorState);
     explicit operator bool() const { return isValid; }
 };
 
@@ -50,10 +60,19 @@ struct NODISCARD LayerMeshesIntermediate final
     Fn organicGroundBase;
     Fn groundSprites;
     Fn terrainSprites;
+    Fn terrainEdges;
+    Fn terrainWalls;
+    Fn roofCaps;
+    Fn doorSprites;
+    Fn warningSprites;
+    Fn wallShadows;
+    Fn wallGrime;
+    FnVec legacyTrails;
     FnVec trails;
     RoomTintArray<Fn> tints;
     FnVec overlays;
     FnVec doors;
+    FnVec legacyDoorLines;
     FnVec walls;
     FnVec dottedWalls;
     FnVec upDownExits;

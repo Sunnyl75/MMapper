@@ -1,3 +1,5 @@
+> Historical stage documentation. Installation/base and preview-clock statements below describe that stage. For the reconciled checkpoint version, use [terrain-checkpoint-reconciliation.md](terrain-checkpoint-reconciliation.md); do not apply the historical patch commands below.
+
 # Organic forest terrain — experimental fifth patch
 
 This optional mode draws seasonal forest and field terrain using stable,

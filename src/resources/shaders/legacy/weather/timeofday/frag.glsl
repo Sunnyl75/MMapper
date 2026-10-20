@@ -21,6 +21,7 @@ layout(std140) uniform WeatherBlock
     vec4 uConfig;      // x=weatherStartTime, y=todStartTime, z=duration, w=unused
 };
 
+uniform vec4 uSkyTint; // Negative alpha selects the existing unknown-clock fallback.
 out vec4 vFragmentColor;
 
 vec3 srgbToLinear(vec3 c)
@@ -69,6 +70,10 @@ vec3 oklabToLinear(vec3 c)
 
 void main()
 {
+    if (uSkyTint.a >= 0.0) {
+        vFragmentColor = uSkyTint;
+        return;
+    }
     float uCurrentTime = uTime.x;
     float uTimeOfDayStartTime = uConfig.y;
     float uTransitionDuration = uConfig.z;

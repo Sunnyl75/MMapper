@@ -97,9 +97,15 @@ set(mmapper_SRCS
     display/RoomSelections.cpp
     display/Textures.cpp
     display/Textures.h
+    display/TerrainDoors.cpp
+    display/TerrainDoors.h
     display/TerrainSprites.h
+    display/TerrainEdges.h
+    display/TerrainMaterials.h
     display/TerrainSpritePacks.h
     display/TerrainSpritePacks.cpp
+    display/TerrainWalls.h
+    display/TerrainTwilight.h
     display/TerrainLighting.h
     display/connectionselection.cpp
     display/connectionselection.h
@@ -296,6 +302,8 @@ set(mmapper_SRCS
     mainwindow/mainwindow-async.h
     mainwindow/mainwindow-compact.cpp
     mainwindow/mainwindow-saveslots.cpp
+    mainwindow/TerrainPreviewClock.cpp
+    mainwindow/TerrainPreviewClock.h
     mainwindow/mainwindow.cpp
     mainwindow/mainwindow.h
     mainwindow/metatypes.cpp
@@ -657,7 +665,13 @@ if(NOT EMSCRIPTEN)
     list(APPEND mmapper_SRCS mpi/remoteeditprocess.cpp mpi/remoteeditprocess.h)
 endif()
 
-qt_add_resources(mmapper_QRC resources/mmapper2.qrc)
+# Native builds embed the sprite atlases without parsing a huge C++ byte array.
+# Keep the ordinary resource path for WebAssembly toolchains.
+if(EMSCRIPTEN)
+    qt_add_resources(mmapper_QRC resources/mmapper2.qrc)
+else()
+    qt_add_big_resources(mmapper_QRC resources/mmapper2.qrc)
+endif()
 
 if(MMAPPER_BETA)
     list(APPEND mmapper_RCS "resources/win32/beta.rc")

@@ -121,6 +121,7 @@ private:
         setTexture("uTexture", 0);
         setUniform4fv(getUniformLocation("uTerrainShadow"), 1, &uniforms.terrainShadow.x);
         setUniform1fv(getUniformLocation("uTerrainDay"), 1, &uniforms.terrainDay);
+        setUniform4iv(getUniformLocation("uTerrainDoors"), 1, &uniforms.terrainDoors.x);
     }
 };
 
@@ -229,9 +230,10 @@ public:
     ~TimeOfDayShader() final;
 
 private:
-    void virt_setUniforms(const glm::mat4 & /*mvp*/,
-                          const GLRenderState::Uniforms & /*uniforms*/) final
-    {}
+    void virt_setUniforms(const glm::mat4 & /*mvp*/, const GLRenderState::Uniforms &uniforms) final
+    {
+        setUniform4fv(getUniformLocation("uSkyTint"), 1, &uniforms.skyTint.x);
+    }
 };
 
 struct NODISCARD ParticleSimulationShader final : public AbstractShaderProgram

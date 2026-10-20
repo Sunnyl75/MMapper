@@ -471,8 +471,38 @@ target_link_libraries(TestTerrainSprites PRIVATE coverage_config)
 set_target_properties(TestTerrainSprites PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
 add_test(NAME TestTerrainSprites COMMAND TestTerrainSprites)
 
+add_executable(TestTerrainEdges TestTerrainEdges.cpp)
+target_link_libraries(TestTerrainEdges PRIVATE coverage_config)
+set_target_properties(TestTerrainEdges PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainEdges COMMAND TestTerrainEdges)
+
 # Pack selection and cell-local mipmaps use Qt images but require no GL/display.
 add_executable(TestTerrainSpritePacks TestTerrainSpritePacks.cpp ../src/display/TerrainSpritePacks.cpp)
 target_link_libraries(TestTerrainSpritePacks PRIVATE Qt6::Gui coverage_config)
 set_target_properties(TestTerrainSpritePacks PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
 add_test(NAME TestTerrainSpritePacks COMMAND TestTerrainSpritePacks)
+
+add_executable(TestTerrainWalls TestTerrainWalls.cpp ../src/display/TerrainSpritePacks.cpp)
+target_compile_definitions(TestTerrainWalls PRIVATE TERRAIN_ASSET_DIR="${CMAKE_SOURCE_DIR}/src/resources/pixmaps")
+target_link_libraries(TestTerrainWalls PRIVATE Qt6::Gui coverage_config)
+set_target_properties(TestTerrainWalls PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainWalls COMMAND TestTerrainWalls)
+
+# Door observations are transient values and require no map or OpenGL context.
+add_executable(TestTerrainDoors TestTerrainDoors.cpp ../src/display/TerrainDoors.cpp)
+target_link_libraries(TestTerrainDoors PRIVATE Qt6::Core coverage_config)
+set_target_properties(TestTerrainDoors PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainDoors COMMAND TestTerrainDoors)
+
+add_executable(TestTerrainTwilight TestTerrainTwilight.cpp)
+target_link_libraries(TestTerrainTwilight PRIVATE coverage_config)
+set_target_properties(TestTerrainTwilight PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainTwilight COMMAND TestTerrainTwilight)
+
+add_executable(TestTerrainPreviewClock TestTerrainPreviewClock.cpp
+    ../src/mainwindow/TerrainPreviewClock.cpp ${clock_SRCS})
+add_dependencies(TestTerrainPreviewClock mm_test mm_global)
+target_link_libraries(TestTerrainPreviewClock PRIVATE mm_test mm_global
+    Qt6::Network Qt6::Gui Qt6::Test Qt6::Widgets coverage_config)
+set_target_properties(TestTerrainPreviewClock PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainPreviewClock COMMAND TestTerrainPreviewClock)

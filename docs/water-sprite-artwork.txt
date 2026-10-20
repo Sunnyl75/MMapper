@@ -1,0 +1,19 @@
+Water surface sprite atlas
+
+Asset: src/resources/pixmaps/terrain-water-patches-seasons.png
+Generated using the built-in image generator, October 2026.
+6 columns x 4 rows, 1536 x 1024 RGBA. Rows: spring, summer, autumn, winter.
+Genuine alpha transparency; preserve it when overriding this asset.
+
+Prompt design: Bree Legends comic map art, broad painted slate/teal shapes
+with sparse dark ink and pale horizontal curved ripples. Six irregular
+silhouettes: bean, flowing S ribbon, rounded triangle, low oval, lobed cloud,
+rounded skewed trapezoid. Opaque interiors and irregular alpha-faded margins,
+no outlined pool boundaries, shoreline vegetation, photographic detail, text
+or checkerboard. Calm negative space; ripple length/position varies. Four
+seasonal palettes; winter has occasional floating ice fragments, not land snow.
+
+Runtime import normalises the four alpha-separated rows. All six silhouettes
+are seeded per saved room ID, with varied positions, size and horizontal flip.
+Keep ripple artwork upright. Shared world-coordinate clipping permits overlap
+between mapped water rooms while retaining the existing water footprint.

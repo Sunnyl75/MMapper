@@ -9,6 +9,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPainter>
 #include <QTemporaryDir>
 
 static void require(const bool ok)
@@ -33,6 +34,39 @@ static QColor tile(const terrain_sprites::SpritePacks &packs,
 }
 int main()
 {
+    // Offset rows must be imported as complete frames, with one common scale
+    // and root height across seasons rather than being cut at nominal gutters.
+    QImage offset{192, 128, QImage::Format_ARGB32};
+    offset.fill(Qt::transparent);
+    for (int row = 0; row < 4; ++row)
+        for (int col = 0; col < 6; ++col)
+            for (int y = 12 + row * 31; y < 32 + row * 31; ++y)
+                for (int x = col * 32 + 8; x < col * 32 + 24; ++x)
+                    offset.setPixelColor(x, y, QColor{40 + col * 30, 30 + row * 50, 100});
+    const auto aligned = terrain_sprites::alignSeasonalSheet(offset,
+                                                             terrain_materials::Placement::UPRIGHT);
+    require(aligned.size() == offset.size());
+    for (int row = 0; row < 4; ++row)
+        for (int col = 0; col < 6; ++col) {
+            const auto color = aligned.pixelColor(col * 32 + 16, row * 32 + 20);
+            require(color == QColor(40 + col * 30, 30 + row * 50, 100));
+            require(aligned.pixelColor(col * 32 + 16, row * 32 + 31).alpha() == 0);
+        }
+    require(terrain_sprites::alignSeasonalSheet(offset, terrain_materials::Placement::MATERIAL)
+            == offset);
+    const auto wall = terrain_sprites::alignSeasonalSheet(offset,
+                                                          terrain_materials::Placement::WALL);
+    require(!wall.isNull());
+    for (int row = 0; row < 4; ++row)
+        for (int col = 0; col < 6; ++col) {
+            for (int x = 0; x < 32; ++x)
+                require(wall.pixelColor(col * 32 + x, row * 32).alpha() == 255);
+            require(wall.pixelColor(col * 32 + 16, row * 32 + 16).alpha() == 0);
+        }
+    QImage absent{192, 128, QImage::Format_ARGB32};
+    absent.fill(Qt::transparent);
+    require(
+        terrain_sprites::alignSeasonalSheet(absent, terrain_materials::Placement::WALL).isNull());
     QTemporaryDir temp;
     require(temp.isValid());
     const QDir dir{temp.path()};
@@ -107,5 +141,22 @@ int main()
         rejected = true;
     }
     require(rejected && expanded.atlases.size() == 4);
+    // Fixed source rows are roles, not seasons: every authored cell survives
+    // normalization, and the repeated cells preserve the existing atlas stride.
+    for (const int columns : {3, 6}) {
+        QImage roles{columns * 16, 2 * 16, QImage::Format_ARGB32};
+        QPainter painter{&roles};
+        for (int role = 0; role < columns * 2; ++role)
+            painter.fillRect(QRect{role % columns * 16, role / columns * 16, 16, 16},
+                             QColor{role * 10, 80, 120});
+        painter.end();
+        const auto normalized = terrain_sprites::expandFixedSheet(roles, columns, 2);
+        require(normalized.size() == QSize{1536, 1024});
+        for (int slot = 0; slot < 24; ++slot)
+            require(normalized.pixelColor(slot % 6 * 256 + 128, slot / 6 * 256 + 128)
+                    == QColor{(slot % (columns * 2)) * 10, 80, 120});
+    }
+    require(terrain_sprites::expandFixedSheet(QImage{}, 3, 2).isNull());
+    require(terrain_sprites::expandFixedSheet(QImage{50, 20, QImage::Format_ARGB32}, 3, 2).isNull());
     std::cout << "Superzone aliases, all fallback levels, invalid assets and atlas layout passed\n";
 }

@@ -3,8 +3,11 @@
 
 #include "Weather.h"
 
+#include "../clock/mumeclock.h"
+#include "../configuration/NamedConfig.h"
 #include "../configuration/configuration.h"
 #include "../display/FrameManager.h"
+#include "../display/TerrainTwilight.h"
 #include "../display/Textures.h"
 #include "../global/Badge.h"
 #include "../map/coordinate.h"
@@ -15,6 +18,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <utility>
 
 #include <glm/glm.hpp>
 #include <glm/gtx/compatibility.hpp>
@@ -32,11 +36,14 @@
  * - Thinning: Scaling the number of particle instances based on intensity for performance.
  * - Pacing: Determining if FrameManager heartbeat should continue.
  *
- * The GPU (shaders) is authoritative for the visual transition curves.
+ * The GPU (shaders) is authoritative for weather and legacy time-of-day curves.
  * By passing start/target pairs and start times to the shaders, the GPU
  * performs per-pixel (or per-vertex) interpolation using its own clocks.
  * This ensures perfectly smooth visuals even if the CPU frame rate is low
  * or inconsistent, while avoiding constant UBO re-uploads for animation state.
+ * Clock-driven dawn/dusk instead samples a continuous CPU palette and sends
+ * one colour uniform to the existing time-of-day mesh. It does not rebuild
+ * weather or terrain geometry.
  */
 
 GLWeather::GLWeather(OpenGL &gl,
@@ -184,6 +191,16 @@ GLWeather::GLWeather(OpenGL &gl,
     setConfig().canvas.weatherTimeOfDayIntensity.registerChangeCallback(m_lifetime,
                                                                         onTimeOfDaySettingChanged);
 
+    m_observer.sig2_tick.connect(m_lifetime, [this](const MumeMoment &moment) {
+        m_clockMoment = moment;
+        m_clockAnchorTime = std::chrono::steady_clock::now();
+        const auto dawnDusk = MumeClock::getDawnDusk(moment.month);
+        if (!m_previewMoment && !m_data.isEmpty()
+            && (m_skyChanging || moment.hour == dawnDusk.dawnHour - 1
+                || moment.hour == dawnDusk.duskHour - 1))
+            m_animationManager.requestUpdate();
+    });
+
     m_animationManager.registerCallback(m_lifetime, [this]() {
         return isAnimating() ? FrameManager::AnimationStatusEnum::Continue
                              : FrameManager::AnimationStatusEnum::Stop;
@@ -274,8 +291,78 @@ void GLWeather::updateTargets()
                              / 50.0f);
 }
 
+void GLWeather::setPreviewMoment(std::optional<MumeMoment> moment)
+{
+    m_previewMoment = std::move(moment);
+    m_animationManager.requestUpdate();
+}
+
+void GLWeather::updateSkyTint()
+{
+    m_skyTint = glm::vec4{0.f, 0.f, 0.f, -1.f};
+    m_skyChanging = false;
+    const bool preview = m_previewMoment.has_value();
+    const auto &moment = preview ? m_previewMoment : m_clockMoment;
+    if (!moment || (!preview && m_observer.getTimeOfDay() == MumeTimeEnum::UNKNOWN))
+        return;
+    const auto dawnDusk = MumeClock::getDawnDusk(moment->month);
+    // One real second is one MUME minute. Extrapolate only within the latest
+    // tick; paused preview time stays exactly at its selected minute.
+    const float fraction = preview
+                               ? 0.f
+                               : std::clamp(static_cast<float>(std::chrono::duration<double>(
+                                                                   std::chrono::steady_clock::now()
+                                                                   - m_clockAnchorTime)
+                                                                   .count()),
+                                            0.f,
+                                            1.f);
+    const double hour = static_cast<double>(moment->hour)
+                        + (static_cast<double>(moment->minute) + static_cast<double>(fraction))
+                              / 60.0;
+    const bool brightMoon = preview ? moment->moonVisibility() == MumeMoonVisibilityEnum::BRIGHT
+                                          && !moment->isMoonBelowHorizon()
+                                    : m_moonVisibility == MumeMoonVisibilityEnum::BRIGHT;
+    auto night = XNamedColor{brightMoon ? NamedColorEnum::WEATHER_NIGHT_MOON
+                                        : NamedColorEnum::WEATHER_NIGHT}
+                     .getColor()
+                     .getVec4();
+    if (!preview) {
+        // Preserve the existing two-second moon-brightness transition when
+        // both ends of the old weather transition are night colours.
+        const auto &weather = m_gl.getUboManager().get<Legacy::SharedVboEnum::WeatherBlock>();
+        const auto start = static_cast<NamedColorEnum>(static_cast<int>(weather.timeOfDay.x));
+        const auto target = static_cast<NamedColorEnum>(static_cast<int>(weather.timeOfDay.y));
+        const auto isNight = [](NamedColorEnum color) {
+            return color == NamedColorEnum::WEATHER_NIGHT
+                   || color == NamedColorEnum::WEATHER_NIGHT_MOON;
+        };
+        if (isNight(start) && isNight(target)) {
+            const auto a = XNamedColor{start}.getColor().getVec4();
+            const auto b = XNamedColor{target}.getColor().getVec4();
+            const float progress = std::clamp((m_animationManager.getElapsedTime()
+                                               - weather.config.y)
+                                                  / WeatherConstants::TRANSITION_DURATION,
+                                              0.f,
+                                              1.f);
+            const auto mixed = terrain_twilight::blend({a.r, a.g, a.b, a.a},
+                                                       {b.r, b.g, b.b, b.a},
+                                                       progress);
+            night = glm::vec4{mixed[0], mixed[1], mixed[2], mixed[3]};
+        }
+    }
+    const auto sky = terrain_twilight::sample(hour,
+                                              dawnDusk.dawnHour,
+                                              dawnDusk.duskHour,
+                                              {night.r, night.g, night.b, night.a});
+    const float intensity = static_cast<float>(getConfig().canvas.weatherTimeOfDayIntensity.get())
+                            / 50.f;
+    m_skyTint = glm::vec4{sky.tint[0], sky.tint[1], sky.tint[2], sky.tint[3] * intensity};
+    m_skyChanging = sky.changing && !preview && intensity > 0.f;
+}
+
 void GLWeather::update()
 {
+    updateSkyTint();
     const auto &weather = m_gl.getUboManager().get<Legacy::SharedVboEnum::WeatherBlock>();
 
     m_currentRainIntensity = applyTransition(weather.config.x,
@@ -300,7 +387,7 @@ bool GLWeather::isAnimating() const
 {
     const bool activePrecipitation = m_currentRainIntensity > 0.0f || m_currentSnowIntensity > 0.0f;
     const bool activeAtmosphere = m_currentCloudsIntensity > 0.0f || m_currentFogIntensity > 0.0f;
-    return isTransitioning() || activePrecipitation || activeAtmosphere;
+    return m_skyChanging || isTransitioning() || activePrecipitation || activeAtmosphere;
 }
 
 bool GLWeather::isTransitioning() const
@@ -438,11 +525,13 @@ void GLWeather::render(const GLRenderState &rs)
     // TimeOfDay
     const auto &wb = m_gl.getUboManager().get<Legacy::SharedVboEnum::WeatherBlock>();
     const auto currentStartColor = static_cast<NamedColorEnum>(static_cast<int>(wb.timeOfDay.x));
-    if (m_currentTimeOfDay != MumeTimeEnum::DAY || currentStartColor != NamedColorEnum::TRANSPARENT
-        || m_currentTimeOfDayIntensity > 0.0f) {
-        if (m_timeOfDay) {
-            m_timeOfDay.render(atmosphereRs);
-        }
+    const bool useSkyTint = m_skyTint.a >= 0.f;
+    if (useSkyTint ? m_skyTint.a > 0.f
+                   : m_currentTimeOfDay != MumeTimeEnum::DAY
+                         || currentStartColor != NamedColorEnum::TRANSPARENT
+                         || m_currentTimeOfDayIntensity > 0.f) {
+        if (m_timeOfDay)
+            m_timeOfDay.render(atmosphereRs.withSkyTint(m_skyTint));
     }
 
     // Atmosphere
