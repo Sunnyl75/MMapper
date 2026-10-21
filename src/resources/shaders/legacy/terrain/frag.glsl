@@ -4,6 +4,7 @@ precision highp int;
 uniform sampler2DArray uTexture;
 uniform vec4 uColor;
 uniform vec4 uTerrainShadow;
+uniform vec4 uSkyTint; // Highlight grade; alpha zero disables it.
 in vec2 vTreeUV;
 flat in ivec2 vTiles;
 flat in float vSeasonMix;
@@ -380,7 +381,7 @@ vec4 litTerrainColor()
     float light = roomIllumination(vec3(vWorldUV,vRoomLayer)).a;
     return vec4(mix(vColor.rgb,vec3(1.0),light),vColor.a);
 }
-void main()
+void shadeTerrain()
 {
     // Derivatives must be taken before per-pixel cap/mitre branches. Implicit
     // derivatives beside an early return otherwise pick different mip levels
@@ -410,6 +411,35 @@ void main()
             || ((vWallMask & 2) != 0 && local.y < 0.0)
             || ((vWallMask & 4) != 0 && local.x > 1.0)
             || ((vWallMask & 8) != 0 && local.x < 0.0)) discard;
+    }
+    if (vKind == 4 && (vWallStyle & 32768) != 0) {
+        int mask = vSurface.z & 15;
+        int side = (mask & 1) != 0 ? 0 : (mask & 2) != 0 ? 1 : (mask & 4) != 0 ? 2 : 3;
+        if (mask == 0 || across(side) != 7 || (vWallMask & (1 << side)) != 0) discard;
+        ivec2 offset = ivec2(floor(vWorldUV)) - vWaterClip.xy;
+        if (any(greaterThan(abs(offset), ivec2(1)))) discard;
+        int bit = offset.x == 0 ? (offset.y > 0 ? 0 : 1)
+                : offset.y == 0 ? (offset.x > 0 ? 2 : 3)
+                : offset.y > 0 ? (offset.x > 0 ? 4 : 5) : (offset.x > 0 ? 6 : 7);
+        if (any(notEqual(offset,ivec2(0))) && (vWaterClip.z & (1 << bit)) == 0) discard;
+        vec2 local = vWorldUV - vec2(vWaterClip.xy);
+        if (((vWallMask & 1) != 0 && local.y > 1.0)
+            || ((vWallMask & 2) != 0 && local.y < 0.0)
+            || ((vWallMask & 4) != 0 && local.x > 1.0)
+            || ((vWallMask & 8) != 0 && local.x < 0.0)) discard;
+        // Fixed authored silhouettes, selected once from the saved room ID.
+        // Road-facing pixels sample precisely the same seasonal material as
+        // the road base, avoiding a separately coloured pale border band.
+        int variant = (vSurface.y & 65535) % 24;
+        vec4 art = sampleTileGrad(vSharedBase + 29 * 32 + variant, vTreeUV, textureDx, textureDy);
+        float coverage = smoothstep(0.02, 0.85, art.a);
+        vec3 road = material(11, 0, continuousUV(vWorldUV)).rgb;
+        // Subtle authored stone detail only toward the water-facing edge;
+        // it can darken the material a little, never add bright highlights.
+        float detail = 1.0-smoothstep(0.18,0.65,vTreeUV.y);
+        float ink = clamp(dot(art.rgb,vec3(0.299,0.587,0.114))*3.0,0.88,1.0);
+        vFragmentColor = vec4(road*mix(1.0,ink,detail),coverage)*litTerrainColor()*uColor;
+        return;
     }
     if (vKind >= 4 && vKind <= 7) {
         vec4 texel;
@@ -453,7 +483,6 @@ void main()
         // rotate their quads 180 degrees, so reverse BOTH texture axes here.
         vec2 uv = vec2(0.5) + sign*vec2(at.x-0.5,at.y-1.0);
         vec4 art = sampleTileGrad(vTiles.x,uv,textureDx*sign,textureDy*sign);
-        if ((vWallStyle & 1024) == 0) art.rgb *= 0.78; // neutral unknown-state symbol
         if (abs(at.x-0.5) > 0.28 && 1.0-at.y < 0.03125) {
             art.rgb = mix(vec3(0.02),art.rgb,art.a);
             art.a = 1.0;
@@ -619,4 +648,29 @@ void main()
         }
         vFragmentColor = texel * litTerrainColor() * uColor;
     }
+}
+
+// Artistic overlay blending: hue follows the sky, while a luminance mask
+// protects dark ink. This grades the material, not a translucent coloured fog.
+vec3 twilightHighlights(vec3 color, vec4 tint)
+{
+    float luminance = dot(color,vec3(0.2126,0.7152,0.0722));
+    float highlights = smoothstep(0.10,0.80,luminance);
+    vec3 overlay = mix(2.0*color*tint.rgb,
+                       1.0-2.0*(1.0-color)*(1.0-tint.rgb),step(vec3(0.5),color));
+    return mix(color,overlay,clamp(tint.a,0.0,1.0)*highlights);
+}
+
+void main()
+{
+    shadeTerrain();
+    // NO_SKY_SHADOW is already packed for indoors, caves, underwater, dark
+    // and permanent-shade rooms. Wall/grime/shadow artwork keeps its own tint.
+    if (uSkyTint.a <= 0.0 || uTerrainShadow.w > 0.5
+        || (vWallStyle & 8192) != 0 || vKind == 12 || vKind == 13 || vKind == 14)
+        return;
+    vec4 tint = uSkyTint;
+    if (uRoomLightParams.x > 0.0)
+        tint.a *= 1.0-roomIllumination(vec3(vWorldUV,vRoomLayer)).a;
+    vFragmentColor.rgb = twilightHighlights(vFragmentColor.rgb,tint);
 }

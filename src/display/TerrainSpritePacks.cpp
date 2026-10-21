@@ -64,6 +64,36 @@ void appendImages(SpritePacks &result, const std::array<QImage, 24> &trees)
 }
 } // namespace
 
+// Fit authored rounded shore silhouettes into a fixed padded atlas frame.
+// The shader restores their long, shallow physical proportions. Empty or
+// invalid sheets stay absent instead of producing a rectangular fallback.
+QImage alignRoadShoreSheet(const QImage &input)
+{
+    if (input.isNull() || input.width() % 6 || input.height() % 4
+        || input.width() / 6 != input.height() / 4)
+        return {};
+    const auto source = input.convertToFormat(QImage::Format_ARGB32);
+    const int sourceCell = source.width() / 6;
+    constexpr int cell = 256;
+    QImage result{6 * cell, 4 * cell, QImage::Format_ARGB32_Premultiplied};
+    result.fill(Qt::transparent);
+    QPainter painter{&result};
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    for (int slot = 0; slot < 24; ++slot) {
+        const int col = slot % 6, row = slot / 6;
+        QRect bounds;
+        for (int y = row * sourceCell; y < (row + 1) * sourceCell; ++y)
+            for (int x = col * sourceCell; x < (col + 1) * sourceCell; ++x)
+                if (qAlpha(source.pixel(x, y)) >= 32)
+                    bounds |= QRect{x, y, 1, 1};
+        if (!bounds.isEmpty())
+            painter.drawImage(QRect{col * cell + 2, row * cell + 2, cell - 4, cell - 4},
+                              source,
+                              bounds);
+    }
+    return result;
+}
+
 // Put both states in the SAME two-room frame around the hinge line. Keeping
 // the top of the jamb aligned prevents the generated open row drifting inward.
 QImage alignDoorSheet(const QImage &input)
@@ -281,8 +311,10 @@ QImage alignSeasonalSheet(const QImage &input, const terrain_materials::Placemen
         caps.end();
         return result;
     }
-    const double widthFraction = placement == P::UPRIGHT ? 0.86 : 0.96;    const double height = placement == P::UPRIGHT ? 0.84 : placement == P::BORDER ? 0.52 : 0.96;
-    const double scale = std::min(cell * widthFraction / maxWidth, cell * height / maxHeight);    QImage aligned{source.size(), QImage::Format_ARGB32_Premultiplied};
+    const double widthFraction = placement == P::UPRIGHT ? 0.86 : 0.96;
+    const double height = placement == P::UPRIGHT ? 0.84 : placement == P::BORDER ? 0.52 : 0.96;
+    const double scale = std::min(cell * widthFraction / maxWidth, cell * height / maxHeight);
+    QImage aligned{source.size(), QImage::Format_ARGB32_Premultiplied};
     aligned.fill(Qt::transparent);
     QPainter painter{&aligned};
     painter.setRenderHint(QPainter::SmoothPixmapTransform);

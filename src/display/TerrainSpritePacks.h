@@ -19,6 +19,7 @@ int appendRepeatMaterial(SpritePacks &packs, const QImage &source);
 int appendFixedSheet(SpritePacks &packs, const QImage &sheet);
 int appendSeasonalSheet(SpritePacks &packs, const QImage &sheet);
 QImage alignDoorSheet(const QImage &source);
+QImage alignRoadShoreSheet(const QImage &source);
 QImage expandFixedSheet(const QImage &source, int columns, int rows);
 QImage alignSeasonalSheet(const QImage &sheet, terrain_materials::Placement placement);
 void applyRoofCaps(QImage &finishes, const QImage &caps);

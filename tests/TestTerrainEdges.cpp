@@ -48,6 +48,13 @@ int main()
             assert(((value >> 4) & 15) == static_cast<int>(mask));
         }
     }
+    // Only mapped roads contribute shore; either room's wall blocks it.
+    const Neighbours shore{Sector::ROAD, Sector::WATER, Sector::URBAN, Sector::ROAD};
+    assert(roadShoreMask(shore, 0) == 9u);
+    for (uint32_t walls = 0; walls < 16; ++walls)
+        assert(roadShoreMask(shore, walls) == (9u & ~walls));
+    assert(roadShoreMask(Neighbours{}, 0) == 0u);
+    assert((flags(BANK, 9) | ROAD_SHORE) % 16 == BANK);
     assert(BANK != ROAD && ROAD != TRAIL && TRAIL != ROAD_BASE);
     assert(seed(0) == seed(0));
     assert(seed(std::numeric_limits<uint32_t>::max()) <= 65535u);

@@ -1,3 +1,5 @@
+> Current behavior: live door animation has been removed. See [terrain-static-doors.md](terrain-static-doors.md). The following describes the earlier implementation.
+
 # Terrain joins, foreground fitting, shadows, clock controls and doors
 
 This increment is based on the previous underwater/brush/wall refinement package, reconstructed tree `051bd33450eb73fc9484c7830e10d362dae1fce0`. It is not a replacement for the checkpoint or the earlier cumulative terrain patch. Apply it once over that currently working version. No saved-map format changes.

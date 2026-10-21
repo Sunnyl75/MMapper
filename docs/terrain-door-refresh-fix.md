@@ -1,3 +1,5 @@
+> Current behavior: live door animation has been removed. See [terrain-static-doors.md](terrain-static-doors.md). The following describes the earlier implementation.
+
 # Fix map clearing and rebuilding on live door observations
 
 Base: source tree b0859a4ee25d4652e08f118e7df62bd2679eff5a, published as cb02a38557176178d1ef639528c6ef9ab8679584. The patch also applies when those same terrain files are uncommitted over bdd0b7b6; synchronisation is not required.

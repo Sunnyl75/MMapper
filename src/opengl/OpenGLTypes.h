@@ -263,7 +263,6 @@ struct NODISCARD GLRenderState final
         glm::vec4 roomLightParams{0.f};
         glm::mat4 roomLightInverse{1.f};
         int roomLightTintPass = 0;
-        glm::ivec4 terrainDoors{0}; // observed server room ID bits, packed states
     };
 
     Uniforms uniforms;
@@ -280,13 +279,6 @@ struct NODISCARD GLRenderState final
     {
         GLRenderState copy = *this;
         copy.uniforms.skyTint = tint;
-        return copy;
-    }
-
-    NODISCARD GLRenderState withTerrainDoors(const glm::ivec4 doors) const
-    {
-        GLRenderState copy = *this;
-        copy.uniforms.terrainDoors = doors;
         return copy;
     }
 

@@ -67,6 +67,28 @@ int main()
     absent.fill(Qt::transparent);
     require(
         terrain_sprites::alignSeasonalSheet(absent, terrain_materials::Placement::WALL).isNull());
+    // Shore silhouettes keep transparent padded ends, all 24 variants and
+    // a fixed frame; invalid/missing artwork never becomes a rectangle.
+    QImage shores{192, 128, QImage::Format_ARGB32};
+    shores.fill(Qt::transparent);
+    {
+        QPainter shorePainter{&shores};
+        for (int slot = 0; slot < 24; ++slot)
+            shorePainter.fillRect(slot % 6 * 32 + 3,
+                                  slot / 6 * 32 + 10,
+                                  26,
+                                  12,
+                                  QColor{slot * 10, 80, 90});
+    }
+    const auto shoreSheet = terrain_sprites::alignRoadShoreSheet(shores);
+    require(shoreSheet.size() == QSize{1536, 1024});
+    for (int slot = 0; slot < 24; ++slot) {
+        require(shoreSheet.pixelColor(slot % 6 * 256 + 128, slot / 6 * 256 + 128)
+                == QColor(slot * 10, 80, 90));
+        require(shoreSheet.pixelColor(slot % 6 * 256, slot / 6 * 256).alpha() == 0);
+    }
+    require(terrain_sprites::alignRoadShoreSheet(QImage{}).isNull());
+    require(terrain_sprites::alignRoadShoreSheet(QImage{20, 20, QImage::Format_ARGB32}).isNull());
     QTemporaryDir temp;
     require(temp.isValid());
     const QDir dir{temp.path()};

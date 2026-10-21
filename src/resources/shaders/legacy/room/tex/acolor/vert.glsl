@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 The MMapper Authors
 
+// Ground and the native room-tint pass must agree for the existing EQUAL
+// depth test, including on drivers that optimise the two shaders differently.
+invariant gl_Position;
 uniform mat4 uMVP;
 layout(std140) uniform NamedColorsBlock
 {

@@ -78,6 +78,7 @@ private:
     std::chrono::steady_clock::time_point m_clockAnchorTime;
     glm::vec4 m_skyTint{0.f, 0.f, 0.f, -1.f};
     bool m_skyChanging = false;
+    glm::vec4 m_terrainSkyTint{0.f};
 
     // Meshes
     std::unique_ptr<Legacy::WeatherParticleMesh> m_particles;
@@ -92,6 +93,9 @@ public:
                        FrameManager &frameManager);
     ~GLWeather();
     void cleanup();
+    NODISCARD bool outdoorStreetLightsOn() const;
+    // The terrain shader grades highlights before the existing sky overlay.
+    NODISCARD glm::vec4 getTerrainSkyTint() const { return m_terrainSkyTint; }
     DELETE_CTORS_AND_ASSIGN_OPS(GLWeather);
 
 public:

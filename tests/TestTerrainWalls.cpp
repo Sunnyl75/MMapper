@@ -220,8 +220,8 @@ int main(int argc, char **argv)
     static_assert(WALL_HEIGHT_ROOMS == 0.5f);
     assert(shadowOffsets.front()[0] == -2 && shadowOffsets.back()[1] == 2);
     assert(rotation(0) == 0 && rotation(1) == 2 && rotation(2) == 3 && rotation(3) == 1);
-    // 44 regional tree packs + fallback and 25 shared families fit the existing
+    // 44 regional tree packs + fallback and all shared families fit the existing
     // portable 256-layer minimum; only the first shared tile is packed in eleven bits.
-    static_assert(90 + terrain_materials::SHEETS.size() * 2 == 148);
+    static_assert(90 + terrain_materials::SHEETS.size() * terrain_materials::LAYERS_PER_SHEET <= 256);
     static_assert(90 * 16 < 2048);
 }

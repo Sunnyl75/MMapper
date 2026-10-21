@@ -699,7 +699,8 @@ void MapCanvas::actuallyPaintGL()
                                                           getCurrentLayer(),
                                                           getViewProj(),
                                                           getTotalScaleFactor()
-                                                              >= terrain_sprites::ZOOM_CUTOFF);
+                                                              >= terrain_sprites::ZOOM_CUTOFF,
+                                                          m_weather.outdoorStreetLightsOn());
 
                 if (m_roomLighting.isAnimating()) {
                     if (!m_roomLightTimer.isActive())
@@ -904,13 +905,23 @@ void MapCanvas::paintSelections()
 
 void MapCanvas::hostPaintGL()
 {
+    auto &diagnostics = m_roomLighting.diagnostics();
     auto frame = m_frameManager.beginFrame();
+    diagnostics.paintAttempt(frame.has_value());
     if (!frame) {
         // Blit the existing FBO on resize or expose
         m_host.applyPresentViewport();
         getOpenGL().blitFboToDefault();
         return;
     }
+
+    const auto &lightingSettings = getConfig().canvas;
+    diagnostics.settings(lightingSettings.roomIllumination.get(),
+                         lightingSettings.roomLightStrength.get(),
+                         lightingSettings.roomLightFlicker.get(),
+                         MapCanvasConfig::getShowPerfStats(),
+                         lightingSettings.advanced.maximumFps.get());
+    auto frameTiming = diagnostics.measure(TerrainLightingDiagnostics::Stage::FRAME);
 
     static thread_local double longestBatchMs = 0.0;
 
@@ -925,16 +936,22 @@ void MapCanvas::hostPaintGL()
     }
 
     {
-        applyPendingGLWork();
+        {
+            auto timing = diagnostics.measure(TerrainLightingDiagnostics::Stage::PENDING_GL);
+            applyPendingGLWork();
+        }
         if (showPerfStats) {
             optAfterTextures = Clock::now();
         }
 
         // Note: The real work happens here!
-        updateBatches();
+        {
+            auto timing = diagnostics.measure(TerrainLightingDiagnostics::Stage::BATCHES);
+            updateBatches();
 
-        // And here
-        finishPendingMapBatches();
+            // And here
+            finishPendingMapBatches();
+        }
 
         // For accurate timing of the update, we'd need to call glFinish(),
         // or at least set up an OpenGL query object. The update will send
@@ -943,7 +960,10 @@ void MapCanvas::hostPaintGL()
             optAfterBatches = Clock::now();
         }
 
-        actuallyPaintGL();
+        {
+            auto timing = diagnostics.measure(TerrainLightingDiagnostics::Stage::DRAW);
+            actuallyPaintGL();
+        }
     }
 
     if (!showPerfStats) {
@@ -1167,8 +1187,6 @@ void MapCanvas::renderMapBatches()
     BatchedMeshes &batchedMeshes = batches.batchedMeshes;
 
     const auto shadow = m_terrainShadow;
-    const auto words = m_terrainDoors.renderState();
-    const glm::ivec4 doorState{words[0], words[1], words[2], words[3]};
     const float terrainDay = settings.seasonalTerrain.get() ? m_terrainDay : -1.f;
     const auto drawLayer = [this,
                             &batches,
@@ -1177,8 +1195,7 @@ void MapCanvas::renderMapBatches()
                             wantDoorNames,
                             wantTerrainSprites,
                             shadow,
-                            terrainDay,
-                            doorState](const int thisLayer, const int currentLayer) {
+                            terrainDay](const int thisLayer, const int currentLayer) {
         const auto it_mesh = batchedMeshes.find(thisLayer);
         if (it_mesh != batchedMeshes.end()) {
             LayerMeshes &meshes = it_mesh->second;
@@ -1187,8 +1204,7 @@ void MapCanvas::renderMapBatches()
                           wantTerrainSprites,
                           shadow,
                           terrainDay,
-                          doorState,
-                          m_roomLightState);
+                          m_roomLightState.withSkyTint(m_weather.getTerrainSkyTint()));
         }
 
         if (wantExtraDetail) {

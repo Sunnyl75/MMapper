@@ -56,5 +56,31 @@ int main()
     assert(!sample(5.0, 10.0, 6.0, night).changing);
     for (int i = 0; i < 1440; ++i)
         assert(std::abs(sample(i / 60.0, 6.0, 18.0, {0.f, 0.f, 0.f, 0.f}).tint[3]) < 1.e-6f);
-    std::cout << "Twilight colours, opacity, boundaries and continuous wrap passed\n";
+    for (int i = 0; i <= 3600; ++i) {
+        const double phase = static_cast<double>(i) / 3600.0;
+        for (const double start : {5.0, 17.0}) {
+            const auto current = sample(start + phase, 6.0, 18.0, night);
+            const auto next = sample(start + phase + 1.e-6, 6.0, 18.0, night);
+            for (std::size_t c = 0; c < 4; ++c) {
+                assert(std::isfinite(current.highlights[c]));
+                assert(current.highlights[c] >= 0.f && current.highlights[c] <= 1.f);
+            }
+            assert(std::abs(current.highlights[3] - next.highlights[3]) < 1.e-4f);
+            for (std::size_t c = 0; c < 3; ++c)
+                assert(std::abs(current.highlights[c] * current.highlights[3]
+                                - next.highlights[c] * next.highlights[3])
+                       < 1.e-4f);
+        }
+    }
+    for (const double hour : {0.0, 5.0, 6.0, 12.0, 17.0, 18.0, 24.0})
+        assert(std::abs(sample(hour, 6.0, 18.0, night).highlights[3]) < 1.e-6f);
+    assert(sample(17.5, 6.0, 18.0, night).highlights[3] > 0.79f);
+    const auto gold = sample(17.3, 6.0, 18.0, night).highlights;
+    assert(gold[0] > gold[1] && gold[1] > gold[2]);
+    const auto violet = sample(5.2, 6.0, 18.0, night).highlights;
+    assert(violet[2] > violet[0] && violet[2] > violet[1]);
+    for (int i = 0; i < 1440; ++i)
+        assert(std::abs(sample(i / 60.0, 6.0, 18.0, {0.f, 0.f, 0.f, 0.f}).highlights[3]) < 1.e-6f);
+    assert(!sample(5.0, 10.0, 6.0, night).changing);
+    std::cout << "Twilight colours, opacity, highlight grade and continuous wrap passed\n";
 }

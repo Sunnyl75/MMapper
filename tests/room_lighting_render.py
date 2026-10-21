@@ -129,6 +129,7 @@ GL.glTexImage3D(GL.GL_TEXTURE_2D_ARRAY,0,GL.GL_RGBA8,1,1,1,0,GL.GL_RGBA,GL.GL_UN
 GL.glTexParameteri(GL.GL_TEXTURE_2D_ARRAY,GL.GL_TEXTURE_MIN_FILTER,GL.GL_NEAREST)
 GL.glTexParameteri(GL.GL_TEXTURE_2D_ARRAY,GL.GL_TEXTURE_MAG_FILTER,GL.GL_NEAREST)
 mvp=(C.c_float*16)(2,0,0,0, 0,2,0,0, 0,0,1,0, -1,-1,0,1)
+surface_vaos={}
 for name in ['room/tex/acolor','terrain']:
  current=programs[name];GL.glUseProgram(current)
  block_index=GL.glGetUniformBlockIndex(current,'NamedColorsBlock')
@@ -140,6 +141,7 @@ for name in ['room/tex/acolor','terrain']:
  GL.glUniform4f(GL.glGetUniformLocation(current,'uColor'),1,1,1,1)
  GL.glUniformMatrix4fv(GL.glGetUniformLocation(current,'uMVP'),1,False,mvp)
  vao=GL.glGenVertexArrays(1);GL.glBindVertexArray(vao)
+ surface_vaos[name]=vao
  vbo=GL.glGenBuffers(1);GL.glBindBuffer(GL.GL_ARRAY_BUFFER,vbo)
  if name=='room/tex/acolor':
   payload=struct.pack('<4i',0,0,0,256)
@@ -169,6 +171,54 @@ for name in ['room/tex/acolor','terrain']:
  if name=='room/tex/acolor':
   GL.glUniform1i(GL.glGetUniformLocation(current,'uRoomLightTintPass'),0)
   check(surface_pixel(1)==dark) # Ordinary coloured room passes are unchanged.
+# Exercise the real organic-ground/native-tint EQUAL depth combination while
+# panning and tilting. A non-depth pbuffer would miss this integration entirely.
+if es:
+ clear_depth=C.CFUNCTYPE(None,C.c_float)(EGL.eglGetProcAddress(b"glClearDepthf"))
+else:
+ clear_depth=GL.glClearDepth
+fbo=GL.glGenFramebuffers(1);GL.glBindFramebuffer(GL.GL_FRAMEBUFFER,fbo)
+colour_attachment=GL.glGenTextures(1);GL.glActiveTexture(GL.GL_TEXTURE2)
+GL.glBindTexture(GL.GL_TEXTURE_2D,colour_attachment)
+GL.glTexImage2D(GL.GL_TEXTURE_2D,0,GL.GL_RGBA8,128,64,0,GL.GL_RGBA,GL.GL_UNSIGNED_BYTE,None)
+GL.glFramebufferTexture2D(GL.GL_FRAMEBUFFER,GL.GL_COLOR_ATTACHMENT0,GL.GL_TEXTURE_2D,colour_attachment,0)
+depth_attachment=GL.glGenRenderbuffers(1);GL.glBindRenderbuffer(GL.GL_RENDERBUFFER,depth_attachment)
+GL.glRenderbufferStorage(GL.GL_RENDERBUFFER,GL.GL_DEPTH_COMPONENT24,128,64)
+GL.glFramebufferRenderbuffer(GL.GL_FRAMEBUFFER,GL.GL_DEPTH_ATTACHMENT,GL.GL_RENDERBUFFER,depth_attachment)
+check(GL.glCheckFramebufferStatus(GL.GL_FRAMEBUFFER)==GL.GL_FRAMEBUFFER_COMPLETE)
+# Only the room-tint pass is dark: an opaque white organic base must receive it.
+GL.glBindVertexArray(surface_vaos['terrain'])
+GL.glBindBuffer(GL.GL_ARRAY_BUFFER,vbo)
+base_payload=struct.pack('<4f4i',.5,.5,1.,0.,0,0,0,15|4096)
+GL.glBufferData(GL.GL_ARRAY_BUFFER,len(base_payload),base_payload,GL.GL_STATIC_DRAW)
+# A zero illumination mask must preserve darkness both inside and outside its grid.
+GL.glActiveTexture(GL.GL_TEXTURE1);GL.glBindTexture(GL.GL_TEXTURE_2D,tex)
+GL.glTexImage2D(GL.GL_TEXTURE_2D,0,GL.GL_RGBA8,16,16,0,GL.GL_RGBA,GL.GL_UNSIGNED_BYTE,bytes(16*16*4))
+GL.glActiveTexture(GL.GL_TEXTURE0);GL.glBindTexture(GL.GL_TEXTURE_2D_ARRAY,white)
+for light_enabled in [0,1]:
+ for grid_origin in [(-3,-3,8,8),(10,10,2,2)]:
+  for pan_x,pan_y in [(-.7,-.4),(0.,0.),(.7,.4)]:
+   view=(C.c_float*16)(.7,.2,.11,0, -.15,1,.17,0, 0,0,1,0, -.275+pan_x,-.6+pan_y,-.14,1)
+   GL.glDisable(GL.GL_BLEND);GL.glEnable(GL.GL_DEPTH_TEST)
+   GL.glDepthMask(True);GL.glDepthFunc(GL.GL_LESS)
+   GL.glClearColor(0,0,0,0);clear_depth(1.)
+   GL.glClear(GL.GL_COLOR_BUFFER_BIT|GL.GL_DEPTH_BUFFER_BIT)
+   for name in ['terrain','room/tex/acolor']:
+    current=programs[name];GL.glUseProgram(current);GL.glBindVertexArray(surface_vaos[name])
+    GL.glUniformMatrix4fv(GL.glGetUniformLocation(current,'uMVP'),1,False,view)
+    GL.glUniform4i(GL.glGetUniformLocation(current,'uRoomLightGrid'),*grid_origin)
+    GL.glUniform4f(GL.glGetUniformLocation(current,'uRoomLightParams'),light_enabled,0,0,0)
+    if name=='room/tex/acolor':
+     GL.glUniform1i(GL.glGetUniformLocation(current,'uRoomLightTintPass'),1)
+     GL.glDepthFunc(GL.GL_EQUAL);GL.glEnable(GL.GL_BLEND)
+     GL.glBlendFunc(GL.GL_DST_COLOR,GL.GL_ZERO)
+    GL.glDrawArraysInstanced(GL.GL_TRIANGLE_STRIP,0,4,1)
+   GL.glFinish();check(GL.glGetError()==GL.GL_NO_ERROR)
+   pixel=bytes(GL.glReadPixels(int((pan_x+1)*64),int((pan_y+1)*32),1,1,GL.GL_RGBA,GL.GL_UNSIGNED_BYTE))
+   check(abs(pixel[0]-51)<=1 and abs(pixel[1]-51)<=1 and abs(pixel[2]-64)<=1)
+GL.glDisable(GL.GL_DEPTH_TEST);GL.glDisable(GL.GL_BLEND)
+GL.glBindFramebuffer(GL.GL_FRAMEBUFFER,0)
+GL.glDeleteRenderbuffers(1,[depth_attachment]);GL.glDeleteFramebuffers(1,[fbo])
 print('PASS',checks,'room lighting render assertions')
 EGL.eglMakeCurrent(display,EGL.EGL_NO_SURFACE,EGL.EGL_NO_SURFACE,EGL.EGL_NO_CONTEXT)
 EGL.eglDestroyContext(display,context);EGL.eglDestroySurface(display,surface);EGL.eglTerminate(display)

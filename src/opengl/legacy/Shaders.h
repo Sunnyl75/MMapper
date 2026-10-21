@@ -123,7 +123,7 @@ private:
         setTexture("uTexture", 0);
         setUniform4fv(getUniformLocation("uTerrainShadow"), 1, &uniforms.terrainShadow.x);
         setUniform1fv(getUniformLocation("uTerrainDay"), 1, &uniforms.terrainDay);
-        setUniform4iv(getUniformLocation("uTerrainDoors"), 1, &uniforms.terrainDoors.x);
+        setUniform4fv(getUniformLocation("uSkyTint"), 1, &uniforms.skyTint.x);
     }
 };
 

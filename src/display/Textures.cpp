@@ -462,10 +462,13 @@ void MapCanvas::initTextures()
         const auto family = static_cast<terrain_materials::Family>(i);
         const bool door = family == terrain_materials::Family::DOOR;
         const bool warning = family == terrain_materials::Family::DEATH_TRAP;
+        const bool shore = family == terrain_materials::Family::ROAD_SHORE;
         const bool fixed = door || warning || family == terrain_materials::Family::UNDERWATER_GROUND
                            || family == terrain_materials::Family::UNDERWATER_DETAIL;
         const int columns = family == terrain_materials::Family::UNDERWATER_GROUND ? 3 : 6;
-        if (door)
+        if (shore)
+            sheet = terrain_sprites::alignRoadShoreSheet(sheet);
+        else if (door)
             sheet = terrain_sprites::alignDoorSheet(sheet);
         else if (fixed)
             sheet = terrain_sprites::expandFixedSheet(sheet, warning ? 1 : columns, warning ? 1 : 2);
@@ -480,7 +483,9 @@ void MapCanvas::initTextures()
             qWarning() << "Invalid seasonal terrain sheet; using bundled fallback:"
                        << sheets[i].filename;
             sheet = QImage{QStringLiteral(":/pixmaps/") + QString::fromLatin1(sheets[i].filename)};
-            if (door)
+            if (shore)
+                sheet = terrain_sprites::alignRoadShoreSheet(sheet);
+            else if (door)
                 sheet = terrain_sprites::alignDoorSheet(sheet);
             else if (fixed)
                 sheet = terrain_sprites::expandFixedSheet(sheet,
@@ -492,7 +497,7 @@ void MapCanvas::initTextures()
             terrain_sprites::applyRoofCaps(sheet,
                                            QImage{getPixmapFilenameRaw(
                                                QStringLiteral("terrain-roof-caps.png"))});
-        if (door || warning || sheets[i].placement == terrain_materials::Placement::WALL
+        if (door || warning || shore || sheets[i].placement == terrain_materials::Placement::WALL
             || sheets[i].placement == terrain_materials::Placement::EAVE
             || sheets[i].placement == terrain_materials::Placement::MASONRY
             || sheets[i].placement == terrain_materials::Placement::FINISH) {
@@ -504,7 +509,8 @@ void MapCanvas::initTextures()
             }
         }
         const int atlas = repeat ? terrain_sprites::appendRepeatMaterial(packs, sheet)
-                          : (fixed || sheets[i].placement == terrain_materials::Placement::FINISH
+                          : (fixed || shore
+                             || sheets[i].placement == terrain_materials::Placement::FINISH
                              || sheets[i].placement == terrain_materials::Placement::EAVE)
                               ? terrain_sprites::appendFixedSheet(packs, sheet)
                               : terrain_sprites::appendSeasonalSheet(packs, sheet);
