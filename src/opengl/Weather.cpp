@@ -7,6 +7,7 @@
 #include "../configuration/NamedConfig.h"
 #include "../configuration/configuration.h"
 #include "../display/FrameManager.h"
+#include "../display/TerrainRoomLightRules.h"
 #include "../display/TerrainTwilight.h"
 #include "../display/Textures.h"
 #include "../global/Badge.h"
@@ -297,10 +298,21 @@ void GLWeather::setPreviewMoment(std::optional<MumeMoment> moment)
     m_animationManager.requestUpdate();
 }
 
+bool GLWeather::outdoorStreetLightsOn() const
+{
+    const bool preview = m_previewMoment.has_value();
+    const auto &moment = preview ? m_previewMoment : m_clockMoment;
+    const auto time = moment && (preview || m_observer.getTimeOfDay() != MumeTimeEnum::UNKNOWN)
+                          ? moment->toTimeOfDay()
+                          : m_observer.getTimeOfDay();
+    return terrain_room_light::streetLampsOn(time);
+}
+
 void GLWeather::updateSkyTint()
 {
     m_skyTint = glm::vec4{0.f, 0.f, 0.f, -1.f};
     m_skyChanging = false;
+    m_terrainSkyTint = glm::vec4{0.f};
     const bool preview = m_previewMoment.has_value();
     const auto &moment = preview ? m_previewMoment : m_clockMoment;
     if (!moment || (!preview && m_observer.getTimeOfDay() == MumeTimeEnum::UNKNOWN))
@@ -357,6 +369,10 @@ void GLWeather::updateSkyTint()
     const float intensity = static_cast<float>(getConfig().canvas.weatherTimeOfDayIntensity.get())
                             / 50.f;
     m_skyTint = glm::vec4{sky.tint[0], sky.tint[1], sky.tint[2], sky.tint[3] * intensity};
+    m_terrainSkyTint = glm::vec4{sky.highlights[0],
+                                 sky.highlights[1],
+                                 sky.highlights[2],
+                                 std::clamp(sky.highlights[3] * intensity, 0.f, 1.f)};
     m_skyChanging = sky.changing && !preview && intensity > 0.f;
 }
 
@@ -526,10 +542,11 @@ void GLWeather::render(const GLRenderState &rs)
     const auto &wb = m_gl.getUboManager().get<Legacy::SharedVboEnum::WeatherBlock>();
     const auto currentStartColor = static_cast<NamedColorEnum>(static_cast<int>(wb.timeOfDay.x));
     const bool useSkyTint = m_skyTint.a >= 0.f;
-    if (useSkyTint ? m_skyTint.a > 0.f
-                   : m_currentTimeOfDay != MumeTimeEnum::DAY
-                         || currentStartColor != NamedColorEnum::TRANSPARENT
-                         || m_currentTimeOfDayIntensity > 0.f) {
+    if (rs.uniforms.roomLightParams.x > 0.f
+        || (useSkyTint ? m_skyTint.a > 0.f
+                       : m_currentTimeOfDay != MumeTimeEnum::DAY
+                             || currentStartColor != NamedColorEnum::TRANSPARENT
+                             || m_currentTimeOfDayIntensity > 0.f)) {
         if (m_timeOfDay)
             m_timeOfDay.render(atmosphereRs.withSkyTint(m_skyTint));
     }

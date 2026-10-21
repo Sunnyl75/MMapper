@@ -193,3 +193,17 @@ void AbstractShaderProgram::setFloat(const char *const name, const float value)
 }
 
 } // namespace Legacy
+
+void Legacy::AbstractShaderProgram::setRoomLighting(const GLRenderState::Uniforms &uniforms)
+{
+    if (hasUniform("uRoomLights"))
+        setTexture("uRoomLights", 1);
+    if (hasUniform("uRoomLightGrid"))
+        setUniform4iv(getUniformLocation("uRoomLightGrid"), 1, &uniforms.roomLightGrid.x);
+    if (hasUniform("uRoomLightParams"))
+        setUniform4fv(getUniformLocation("uRoomLightParams"), 1, &uniforms.roomLightParams.x);
+    if (hasUniform("uRoomLightInverse"))
+        setMatrix("uRoomLightInverse", uniforms.roomLightInverse);
+    if (hasUniform("uRoomLightTintPass"))
+        setUniform1iv(getUniformLocation("uRoomLightTintPass"), 1, &uniforms.roomLightTintPass);
+}

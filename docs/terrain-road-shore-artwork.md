@@ -1,0 +1,9 @@
+# Road shoreline artwork
+
+Built-in image generation; transparent output requested and alpha verified.
+Saved asset: `src/resources/pixmaps/terrain-road-shores.png`.
+The original PNG is bundled unchanged. Qt performs atlas framing at load time.
+
+## Prompt
+
+Use case: stylized-concept. Asset type: production top-down 2D game shoreline sprite atlas for a medieval illustrated map, earthy comic-book ink and painterly detail, Bree Legends style. Create ONE transparent PNG sprite sheet with EXACTLY 6 columns and 4 rows of equally sized square cells, 24 separate sprites, NO gutters between cells, no text, no grid lines, no background, true transparent alpha. In each cell center ONE horizontally long low capsule-shaped strip of compact brown gravel/earth road bank, about 90% of cell width and 40% of cell height, fully isolated with generous transparent space. ALL sprites share same orientation: road-facing edge on TOP is fairly smooth, water-facing edge on BOTTOM has broad soft rounded lobes with embedded pebble clusters. BOTH left and right ends are fully rounded like capsule ends, NOT square cutoffs. Give different gentle lobed silhouettes to all 24 strips, big readable shapes, smooth contours, no serrated sawtooth noise, no spiky grass. Muted mid-brown compact dirt with grey-brown small stones, restrained dark outlines, flat diffuse overhead lighting; no shiny white highlights, no white foam, no water pixels, no grass, no cast shadows. Not a river picture: only the 24 individual thin banks, uniformly aligned and uniformly sized in a mathematically regular 6x4 contact sheet. Do not put multiple sprites in a cell. Do not draw rectangular ground tiles. Make capsules opaque inside and transparent outside with a very narrow antialiased edge. All rows are neutral season-independent earth, no snow. The application will use their alpha silhouettes with its own seasonally matching road texture.

@@ -37,13 +37,16 @@ header += '#define MAX_NAMED_COLORS 256\n'
 program = GL.glCreateProgram()
 for stage, kind in [('vert', GL.GL_VERTEX_SHADER), ('frag', GL.GL_FRAGMENT_SHADER)]:
     shader = GL.glCreateShader(kind)
-    GL.glShaderSource(shader, header + (root / f'src/resources/shaders/legacy/terrain/{stage}.glsl').read_text())
+    source = (root / f'src/resources/shaders/legacy/terrain/{stage}.glsl').read_text()
+    if stage == 'frag': source = (root/'src/resources/shaders/legacy/room-lighting.glsl').read_text()+'\n'+source
+    GL.glShaderSource(shader, header + source)
     GL.glCompileShader(shader)
     assert GL.glGetShaderiv(shader, GL.GL_COMPILE_STATUS), GL.glGetShaderInfoLog(shader)
     GL.glAttachShader(program, shader)
 GL.glLinkProgram(program)
 assert GL.glGetProgramiv(program, GL.GL_LINK_STATUS), GL.glGetProgramInfoLog(program)
 GL.glUseProgram(program)
+GL.glUniform1i(GL.glGetUniformLocation(program,'uRoomLights'),1)
 GL.glBindVertexArray(GL.glGenVertexArrays(1))
 ubo = GL.glGenBuffers(1)
 GL.glBindBuffer(GL.GL_UNIFORM_BUFFER, ubo)
@@ -61,15 +64,30 @@ GL.glUniform4f(GL.glGetUniformLocation(program, 'uTerrainShadow'), 0,0,0,0)
 # transparent here, so verge decoration cannot obscure endpoint assertions.
 texture = GL.glGenTextures(1)
 GL.glBindTexture(GL.GL_TEXTURE_2D_ARRAY, texture)
-materials = bytearray()
-for family in range(29):
+# Real authored shoreline silhouettes; synthetic colours for other materials.
+# Match the Qt loader's padded alpha-bounds framing, at 32 pixels per cell.
+source_shores = Image.open(root/'src/resources/pixmaps/terrain-road-shores.png').convert('RGBA')
+shore_frames=[]
+for slot in range(24):
+    source_cell=source_shores.width//6
+    frame=source_shores.crop((slot%6*source_cell,slot//6*source_cell,
+                             (slot%6+1)*source_cell,(slot//6+1)*source_cell))
+    bounds=frame.getchannel('A').point(lambda a: 255 if a>=32 else 0).getbbox()
+    fitted=Image.new('RGBA',(256,256))
+    if bounds: fitted.paste(frame.crop(bounds).resize((252,252),Image.Resampling.BILINEAR),(2,2))
+    shore_frames.append(fitted.resize((32,32),Image.Resampling.BILINEAR).transpose(Image.Transpose.FLIP_TOP_BOTTOM))
+materials=bytearray()
+for family in range(30):
     for page in range(2):
-        for y in range(8):
-            for x in range(8):
-                season = ((page * 16 + (y // 2) * 4 + x // 2) // 6) % 4
-                rgb = (220,225,230) if season == 0 else ((40 + family * 13) % 256,95,55)
-                materials.extend((*rgb, 0 if family == 13 else 255))
-GL.glTexImage3D(GL.GL_TEXTURE_2D_ARRAY,0,GL.GL_RGBA8,8,8,58,0,GL.GL_RGBA,GL.GL_UNSIGNED_BYTE,bytes(materials))
+        atlas=Image.new('RGBA',(128,128))
+        for cell in range(16):
+            slot=page*16+cell
+            season=(slot//6)%4
+            rgb=(220,225,230) if season==0 else ((40+family*13)%256,95,55)
+            tile=shore_frames[slot] if family==29 and slot<24 else Image.new('RGBA',(32,32),(*rgb,0 if family in [13,29] else 255))
+            atlas.paste(tile,((cell%4)*32,(cell//4)*32))
+        materials.extend(atlas.tobytes())
+GL.glTexImage3D(GL.GL_TEXTURE_2D_ARRAY,0,GL.GL_RGBA8,128,128,60,0,GL.GL_RGBA,GL.GL_UNSIGNED_BYTE,bytes(materials))
 GL.glTexParameteri(GL.GL_TEXTURE_2D_ARRAY,GL.GL_TEXTURE_MIN_FILTER,GL.GL_NEAREST)
 GL.glTexParameteri(GL.GL_TEXTURE_2D_ARRAY,GL.GL_TEXTURE_MAG_FILTER,GL.GL_NEAREST)
 GL.glUniform1i(GL.glGetUniformLocation(program,'uTexture'),0)
@@ -85,7 +103,7 @@ GL.glViewport(0,0,256,256)
 class Instance(C.Structure):
     _fields_ = [('pos', C.c_float * 4), ('data', C.c_int * 4)]
 
-def render(kind, here=7, sides=(1,1,1,1), mask=3, seed=12345, day=180, size=1, neighbours=0, wide=False, shade=1, walls=0, shadow=False, raw=None, sky=(.2,.8), light=0.0, doors=(0,0), reuse=False):
+def render(kind, here=7, sides=(1,1,1,1), mask=3, seed=12345, day=180, size=1, neighbours=0, wide=False, shade=1, walls=0, shadow=False, raw=None, sky=(.2,.8), light=0.0, reuse=False, view_override=None):
     packed = here | sum(s << (4 * (i + 1)) for i, s in enumerate(sides))
     instance = Instance((C.c_float * 4)(.5,.5,size,0),
                         (C.c_int * 4)(packed,0,seed | neighbours << 16 | walls << 24,kind | mask << 4))
@@ -94,11 +112,11 @@ def render(kind, here=7, sides=(1,1,1,1), mask=3, seed=12345, day=180, size=1, n
     if not reuse:
         GL.glBufferData(GL.GL_ARRAY_BUFFER, C.sizeof(instance), C.byref(instance), GL.GL_STATIC_DRAW)
     view = (C.c_float * 16)(2/3,0,0,0, 0,2/3,0,0, 0,0,1,0, -1/3,-1/3,0,1) if wide else matrix
+    if view_override is not None: view = view_override
     GL.glUniformMatrix4fv(GL.glGetUniformLocation(program, 'uMVP'),1,False,view)
     GL.glUniform4f(GL.glGetUniformLocation(program, 'uTerrainShadow'),*sky,.3 if shadow else light,1 if shadow else 0)
     GL.glUniform4f(GL.glGetUniformLocation(program, 'uColor'),shade,shade,shade,1)
     GL.glUniform1f(GL.glGetUniformLocation(program, 'uTerrainDay'), day)
-    GL.glUniform4i(GL.glGetUniformLocation(program, 'uTerrainDoors'), C.c_int(doors[0]).value,doors[1],0,0)
     GL.glClearColor(0,0,0,0)
     GL.glClear(GL.GL_COLOR_BUFFER_BIT)
     GL.glDrawArraysInstanced(GL.GL_TRIANGLE_STRIP, 0, 4, 1)
@@ -149,6 +167,63 @@ for mask in range(16):
         filled=render(7,sides=(1,2,6,0),mask=mask,walls=walls)
         check(alpha(filled).getextrema() == (255,255))
         check(filled.getpixel((128,128))[:3] == filled.getpixel((0,0))[:3])
+# Authored shoreline strips use rounded overlapping ends, with matched road
+# colour and no invented edge across a wall. All 24 fixed silhouettes are used.
+shore_kind=4 | 32768
+shore_images=[]
+for direction in range(4):
+    sides=[6]*4
+    sides[direction]=7
+    for variant in range(24):
+        im=render(shore_kind,here=6,sides=sides,mask=1<<direction,seed=variant,neighbours=255)
+        check(im.getpixel(points[direction])[3]>240)
+        check(im.getpixel((128,128))[3]==0)
+        check(im.tobytes()==render(shore_kind,here=6,sides=sides,mask=1<<direction,
+                                   seed=variant,neighbours=255).tobytes())
+        # Opaque road-facing pixels have exactly the underlying road colour.
+        check(im.getpixel(points[direction])[:3]==render(7).getpixel((128,128))[:3])
+        check(alpha(render(shore_kind,here=6,sides=sides,mask=1<<direction,
+                           seed=variant,walls=1<<direction)).getextrema()==(0,0))
+        if direction==0: shore_images.append(im.tobytes())
+    check(alpha(render(shore_kind,here=6,sides=sides,mask=0)).getextrema()==(0,0))
+check(len(set(shore_images))==24)
+for sector in [0,1,2,3,4,5,6,8,9,10,11,12,13,14]:
+    check(alpha(render(shore_kind,here=6,sides=(sector,)*4,mask=1)).getextrema()==(0,0))
+# Rounded caps project past both ends. Unknown/blocked side rooms clip them.
+for direction in range(4):
+    sides=[6]*4;sides[direction]=7
+    cap=render(shore_kind,here=6,sides=sides,mask=1<<direction,seed=3,wide=True,neighbours=255)
+    cut=render(shore_kind,here=6,sides=sides,mask=1<<direction,seed=3,wide=True,neighbours=0)
+    check(sum(alpha(cap).tobytes())>sum(alpha(cut).tobytes()))
+    if direction<2:
+        check(alpha(cap).crop((0,0,85,256)).getbbox() is not None)
+        check(alpha(cap).crop((171,0,256,256)).getbbox() is not None)
+    else:
+        check(alpha(cap).crop((0,0,256,85)).getbbox() is not None)
+        check(alpha(cap).crop((0,171,256,256)).getbbox() is not None)
+    # A wall at a strip end prevents a cap bypassing that wall.
+    wall=4 if direction<2 else 1
+    blocked=render(shore_kind,here=6,sides=sides,mask=1<<direction,seed=3,
+                   wide=True,neighbours=255,walls=wall)
+    box=(171,0,256,256) if direction<2 else (0,171,256,256)
+    check(alpha(blocked).crop(box).getbbox() is None)
+# At an outward bend, the end from each adjoining water room reaches into
+# the diagonal water room. Rounded cap shoulders cover the corner for every
+# variant, including when the other room picked a different variant.
+for direction in [1,3]:
+    sides=[6]*4;sides[direction]=7
+    for variant in range(24):
+        cap=render(shore_kind,here=6,sides=sides,mask=1<<direction,seed=variant,
+                   wide=True,neighbours=255)
+        point=(173,89) if direction==1 else (89,173)
+        check(cap.getpixel(point)[3]==255)
+
+# No jagged procedural wave remains; clear water at the centre for all sides.
+for direction in range(4):
+    sides=[7]*4
+    im=render(shore_kind,here=6,sides=sides,mask=1<<direction,neighbours=255)
+    check(im.getpixel((128,128))[3]==0)
+
 # Water undercoat always fills its room; patch shapes supply the visible variety.
 check(alpha(render(9,here=6,mask=0)).getextrema() == (255,255))
 
@@ -287,6 +362,64 @@ warning = 10 | 4096 | 8192
 check(render(warning,here=28*32,sides=(0,0,0,0),mask=0,day=0).tobytes()
       == render(warning,here=28*32,sides=(0,0,0,0),mask=0,day=180).tobytes())
 check(alpha(render(warning,here=28*32,sides=(0,0,0,0),mask=0,shadow=True)).getbbox() is None)
+
+# Twilight grades actual material highlights; ink, indoor rooms, alpha and
+# artificial illumination must remain unchanged. The default uniform is zero.
+flags = 15 | 4096
+raw = (19*32,0,0,flags)
+neutral = render(flags,raw=raw,mask=0)
+dark = render(flags,raw=raw,mask=0,shade=0.05)
+GL.glUniform4f(GL.glGetUniformLocation(program,'uSkyTint'),0.70,0.55,0.35,0.80)
+warm = render(flags,raw=raw,mask=0)
+check(warm.tobytes() != neutral.tobytes())
+check(alpha(warm).tobytes() == alpha(neutral).tobytes())
+pixel = warm.getpixel((128,128)); original = neutral.getpixel((128,128))
+check(pixel[0] > original[0] and pixel[2] < original[2])
+check(dark.tobytes() == render(flags,raw=raw,mask=0,shade=0.05).tobytes())
+inside = flags | 8192
+check(render(inside,raw=(19*32,0,0,inside),mask=0).tobytes() == neutral.tobytes())
+# A fully artificially lit outdoor room is also protected by the cached mask.
+GL.glActiveTexture(GL.GL_TEXTURE1)
+light_texture = GL.glGenTextures(1)
+GL.glBindTexture(GL.GL_TEXTURE_2D,light_texture)
+GL.glTexImage2D(GL.GL_TEXTURE_2D,0,GL.GL_RGBA8,1,1,0,GL.GL_RGBA,
+                GL.GL_UNSIGNED_BYTE,bytes((255,180,0,255)))
+GL.glTexParameteri(GL.GL_TEXTURE_2D,GL.GL_TEXTURE_MIN_FILTER,GL.GL_NEAREST)
+GL.glTexParameteri(GL.GL_TEXTURE_2D,GL.GL_TEXTURE_MAG_FILTER,GL.GL_NEAREST)
+GL.glActiveTexture(GL.GL_TEXTURE0)
+GL.glUniform4i(GL.glGetUniformLocation(program,'uRoomLightGrid'),0,0,1,1)
+GL.glUniform4f(GL.glGetUniformLocation(program,'uRoomLightParams'),1,0,0,0)
+check(render(flags,raw=raw,mask=0).tobytes() == neutral.tobytes())
+GL.glUniform4f(GL.glGetUniformLocation(program,'uRoomLightParams'),0,0,0,0)
+GL.glUniform4f(GL.glGetUniformLocation(program,'uSkyTint'),0,0,0,0)
+check(render(flags,raw=raw,mask=0).tobytes() == neutral.tobytes())
+
+# The owning-room tint covers the complete sprite, including its overhang.
+GL.glBindBuffer(GL.GL_UNIFORM_BUFFER,ubo)
+dark_colour = (C.c_float*4)(.2,.25,.3,1.)
+GL.glBufferSubData(GL.GL_UNIFORM_BUFFER,16,C.sizeof(dark_colour),dark_colour)
+flags = 8192 # Tree, no sky shadows: isolate room tint from directional shading.
+dark_tree = render(flags,raw=(0,1,255<<16,flags),size=1,mask=0,wide=True)
+plain_tree = render(flags,raw=(0,0,255<<16,flags),size=1,mask=0,wide=True)
+inside, outside = (128,154), (128,187)
+check(dark_tree.getpixel(inside)[0] < plain_tree.getpixel(inside)[0]*.4)
+check(dark_tree.getpixel(outside)[0] < plain_tree.getpixel(outside)[0]*.4)
+check(alpha(dark_tree).tobytes() == alpha(plain_tree).tobytes())
+# Panning and cached-light-grid changes must retain the full-sprite tint.
+GL.glActiveTexture(GL.GL_TEXTURE1)
+GL.glBindTexture(GL.GL_TEXTURE_2D,light_texture)
+GL.glTexImage2D(GL.GL_TEXTURE_2D,0,GL.GL_RGBA8,16,16,0,GL.GL_RGBA,
+                GL.GL_UNSIGNED_BYTE,bytes(16*16*4))
+GL.glActiveTexture(GL.GL_TEXTURE0)
+GL.glUniform4f(GL.glGetUniformLocation(program,'uRoomLightParams'),1,0,0,0)
+panned = (C.c_float*16)(2/3,0,0,0, 0,2/3,0,0, 0,0,1,0, -.5,-1/6,0,1)
+for origin in [(-1,-1,3,3),(0,0,2,2)]:
+    GL.glUniform4i(GL.glGetUniformLocation(program,'uRoomLightGrid'),*origin)
+    dark_pan = render(flags,raw=(0,1,255<<16,flags),size=1,mask=0,view_override=panned)
+    plain_pan = render(flags,raw=(0,0,255<<16,flags),size=1,mask=0,view_override=panned)
+    check(dark_pan.getpixel((107,175))[0] < plain_pan.getpixel((107,175))[0]*.4)
+    check(dark_pan.getpixel((107,209))[0] < plain_pan.getpixel((107,209))[0]*.4)
+GL.glUniform4f(GL.glGetUniformLocation(program,'uRoomLightParams'),0,0,0,0)
 
 # Save a diagnostic contact sheet of actual shader output for visual inspection.
 cases = [(5,7,(1,1,1,1),3),(5,7,(4,4,4,4),5),(6,1,(1,1,1,1),7),
@@ -556,50 +689,35 @@ if len(sys.argv) > 3:
     door_pages = [Image.open(atlas_dir / f'door-atlas-{page}-0.png').convert('RGBA') for page in range(2)]
     GL.glTexImage3D(GL.GL_TEXTURE_2D_ARRAY,0,GL.GL_RGBA8,512,512,2,0,GL.GL_RGBA,
                     GL.GL_UNSIGNED_BYTE,b''.join(page.tobytes() for page in door_pages))
-    review = Image.new('RGBA',(1536,640),(110,105,95,255))
+    review = Image.new('RGBA',(1536,320),(110,105,95,255))
+    check(GL.glGetUniformLocation(program,'uTerrainDoors') == -1)
     for variant in range(6):
-        for state in [0,6]:
-            flags = 12 | 4096 | 8192 | 256
-            observed = (101,2 if state == 6 else 1)
-            first = render(flags,raw=(variant,101,202,flags),mask=0,doors=observed)
-            other_flags = flags | 512 | (2 << 4) | (1 << 18)
-            second = render(other_flags,raw=(variant,202,101,other_flags),mask=0,doors=observed)
-            check(alpha(first).getbbox() is not None)
-            check(alpha(second).getbbox() is not None)
-            # Across the room boundary, opposing halves sample adjacent rows
-            # of the same frame in the same world orientation.
-            tile = variant+state
-            for x in range(75,181,15):
-                u = 0.25+0.5*(x+0.5)/256.0
-                for image,y,v in [(first,255,0.5-0.25/256.0),(second,0,0.5+0.25/256.0)]:
-                    expected = door_pages[0].getpixel(((tile%4)*128+int(u*128),
-                                                      (tile//4)*128+int(v*128)))
-                    actual = image.getpixel((x,y))
-                    check(max(abs(actual[c]-expected[c]) for c in range(4)) <= 1)
-            pair = Image.new('RGBA',(256,512),(110,105,95,255))
-            pair.alpha_composite(second.transpose(Image.Transpose.FLIP_TOP_BOTTOM),(0,0))
-            pair.alpha_composite(first.transpose(Image.Transpose.FLIP_TOP_BOTTOM),(0,256))
-            review.alpha_composite(pair.crop((0,128,256,448)),(variant*256,(state//6)*320))
-        closed = render(flags,raw=(variant,101,202,flags),mask=0,doors=(101,1))
-        # Same VBO, different uniform: live state must not rebuild/upload geometry.
-        opened = render(flags,mask=0,doors=(101,2),reuse=True)
-        check(closed.tobytes() != opened.tobytes())
-        check(render(flags,mask=0,doors=(101,1),reuse=True).tobytes() == closed.tobytes())
-        unknown = render(flags,mask=0,doors=(0,0),reuse=True)
-        check(unknown.tobytes() != closed.tobytes())
-        check(render(flags,mask=0,doors=(999,2),reuse=True).tobytes() == unknown.tobytes())
-        # A paired peer's reverse direction is the same physical door state.
-        check(render(flags,mask=0,doors=(202,2 << 2),reuse=True).tobytes() == opened.tobytes())
+        flags = 12 | 4096 | 8192 | 256
+        first = render(flags,raw=(variant,0,0,flags),mask=0)
+        other_flags = flags | 512 | (2 << 4)
+        second = render(other_flags,raw=(variant,0,0,other_flags),mask=0)
+        check(alpha(first).getbbox() is not None)
+        check(alpha(second).getbbox() is not None)
+        # Both closed halves retain the exact canonical join and full artwork colour.
+        for x in range(75,181,15):
+            u = 0.25+0.5*(x+0.5)/256.0
+            for image,y,v in [(first,255,0.5-0.25/256.0),(second,0,0.5+0.25/256.0)]:
+                expected = door_pages[0].getpixel(((variant%4)*128+int(u*128),
+                                                  (variant//4)*128+int(v*128)))
+                actual = image.getpixel((x,y))
+                check(max(abs(actual[c]-expected[c]) for c in range(4)) <= 1)
+        pair = Image.new('RGBA',(256,512),(110,105,95,255))
+        pair.alpha_composite(second.transpose(Image.Transpose.FLIP_TOP_BOTTOM),(0,0))
+        pair.alpha_composite(first.transpose(Image.Transpose.FLIP_TOP_BOTTOM),(0,256))
+        review.alpha_composite(pair.crop((0,128,256,448)),(variant*256,0))
         for side,turn in enumerate([0,2,3,1]):
-            style=flags | (side << 18) | (turn << 4)
-            own=render(style,raw=(variant,0xffffffff,202,style),doors=(0xffffffff,2 << (side*2)))
-            peer=render(style,doors=(202,2 << ((side^1)*2)),reuse=True)
-            check(own.tobytes() == peer.tobytes())
-        # One-way instances cannot borrow observations from an absent peer.
-        single=render(flags,raw=(variant,101,0,flags),doors=(999,2))
-        check(single.tobytes() == render(flags,doors=(0,0),reuse=True).tobytes())
+            style=flags | (turn << 4)
+            own=render(style,raw=(variant,0,0,style),mask=0)
+            check(own.tobytes() == render(style,mask=0,reuse=True).tobytes())
+        single=render(flags,raw=(variant,0,0,flags),mask=0)
+        check(single.tobytes() == first.tobytes())
     review.save(atlas_dir.parent / ('doors-shader-review-' + api + '.png'))
-    examples.append(opened)
+    examples.append(first)
 print('PASS', checks, 'render assertions')
 EGL.eglMakeCurrent(display,EGL.EGL_NO_SURFACE,EGL.EGL_NO_SURFACE,EGL.EGL_NO_CONTEXT)
 EGL.eglDestroyContext(display,context)

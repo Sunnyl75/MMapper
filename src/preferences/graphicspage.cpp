@@ -80,6 +80,19 @@ GraphicsPage::GraphicsPage(QWidget *parent)
         graphicsSettingsChanged();
     });
 
+    // NamedConfig callbacks repaint lighting without rebuilding the terrain meshes.
+    connect(ui->roomIllumination, &QCheckBox::toggled, this, [](const bool enabled) {
+        setConfig().canvas.roomIllumination.set(enabled);
+    });
+    connect(ui->roomLightStrength,
+            QOverload<int>::of(&QSpinBox::valueChanged),
+            this,
+            [](const int value) { setConfig().canvas.roomLightStrength.set(value); });
+    connect(ui->roomLightFlicker,
+            QOverload<int>::of(&QSpinBox::valueChanged),
+            this,
+            [](const int value) { setConfig().canvas.roomLightFlicker.set(value); });
+
     connect(ui->seasonalTerrain, &QCheckBox::stateChanged, this, [this](int /*unused*/) {
         setConfig().canvas.seasonalTerrain.set(ui->seasonalTerrain->isChecked());
         graphicsSettingsChanged();
@@ -195,6 +208,9 @@ void GraphicsPage::slot_loadConfig()
 
     ui->organicTerrain->setChecked(settings.organicTerrain.get());
     ui->seasonalTerrain->setChecked(settings.seasonalTerrain.get());
+    ui->roomIllumination->setChecked(settings.roomIllumination.get());
+    ui->roomLightStrength->setValue(settings.roomLightStrength.get());
+    ui->roomLightFlicker->setValue(settings.roomLightFlicker.get());
     ui->drawUnsavedChanges->setChecked(settings.showUnsavedChanges.get());
     ui->drawNeedsUpdate->setChecked(settings.showMissingMapId.get());
     ui->drawNotMappedExits->setChecked(settings.showUnmappedExits.get());

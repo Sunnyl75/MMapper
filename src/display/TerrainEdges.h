@@ -53,6 +53,16 @@ constexpr uint32_t borderVariant(const Sector sector)
 
 // These kinds extend TerrainSprites::Kind without changing its existing ABI.
 inline constexpr int BANK = 4;
+inline constexpr int ROAD_SHORE = 1 << 15; // Bank-kind role, not a route apron.
+
+constexpr uint32_t roadShoreMask(const Neighbours &neighbours, const uint32_t walls)
+{
+    uint32_t mask = 0;
+    for (uint32_t side = 0; side < neighbours.size(); ++side)
+        if (neighbours[side] == Sector::ROAD && !(walls & (1u << side)))
+            mask |= 1u << side;
+    return mask;
+}
 inline constexpr int ROAD = 5;
 inline constexpr int TRAIL = 6;
 inline constexpr int ROAD_BASE = 7;

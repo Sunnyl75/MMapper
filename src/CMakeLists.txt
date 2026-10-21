@@ -97,7 +97,6 @@ set(mmapper_SRCS
     display/RoomSelections.cpp
     display/Textures.cpp
     display/Textures.h
-    display/TerrainDoors.cpp
     display/TerrainDoors.h
     display/TerrainSprites.h
     display/TerrainEdges.h
@@ -106,6 +105,16 @@ set(mmapper_SRCS
     display/TerrainSpritePacks.cpp
     display/TerrainWalls.h
     display/TerrainTwilight.h
+    display/TerrainLightMask.cpp
+    display/TerrainLightMask.h
+    display/TerrainLightVisibility.cpp
+    display/TerrainLightVisibility.h
+    display/TerrainLightingDiagnostics.cpp
+    display/TerrainLightingDiagnostics.h
+    display/TerrainRoomLighting.cpp
+    display/TerrainRoomLighting.h
+    display/TerrainRoomLightRules.cpp
+    display/TerrainRoomLightRules.h
     display/TerrainLighting.h
     display/connectionselection.cpp
     display/connectionselection.h

@@ -38,7 +38,8 @@ enum class Family : int {
     UNDERWATER_GROUND,
     UNDERWATER_DETAIL,
     DOOR,
-    DEATH_TRAP
+    DEATH_TRAP,
+    ROAD_SHORE
 };
 enum class Placement { PATCH, UPRIGHT, MATERIAL, BORDER, WALL, REPEAT, EAVE, MASONRY, FINISH };
 struct Sheet final
@@ -48,7 +49,7 @@ struct Sheet final
 };
 inline constexpr int LAYERS_PER_SHEET = 2;
 inline constexpr int TILES_PER_SHEET = 32;
-inline constexpr std::array<Sheet, 29> SHEETS{
+inline constexpr std::array<Sheet, 30> SHEETS{
     {{"terrain-forest-ground-seasons.png", Placement::PATCH},
      {"terrain-field-ground-seasons.png", Placement::PATCH},
      {"terrain-field-details-seasons.png", Placement::UPRIGHT},
@@ -77,7 +78,8 @@ inline constexpr std::array<Sheet, 29> SHEETS{
      {"terrain-underwater-ground.png", Placement::PATCH},
      {"terrain-underwater-details.png", Placement::UPRIGHT},
      {"terrain-doors.png", Placement::MATERIAL},
-     {"terrain-death-trap.png", Placement::MATERIAL}}};
+     {"terrain-death-trap.png", Placement::MATERIAL},
+     {"terrain-road-shores.png", Placement::MATERIAL}}};
 constexpr int atlas(const int firstShared, const Family family)
 {
     return firstShared + LAYERS_PER_SHEET * static_cast<int>(family);
@@ -89,8 +91,6 @@ inline constexpr int LOW_SHADOW = 1 << 15;
 inline constexpr int MID_SHADOW = 1 << 16;
 inline constexpr int DOOR_OVERLAY = 1 << 8; // Kind 12 has its own role flags.
 inline constexpr int DOOR_OTHER_SIDE = 1 << 9;
-inline constexpr int DOOR_KNOWN = 1 << 10; // Set per frame by the vertex shader.
-inline constexpr unsigned DOOR_DIRECTION_SHIFT = 18;
 inline constexpr int ROUTE_APRON = 1 << 15; // Route kinds only.
 inline constexpr int WARNING_KIND = 10;
 inline constexpr int WALL_KIND = 12;

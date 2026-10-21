@@ -488,8 +488,8 @@ target_link_libraries(TestTerrainWalls PRIVATE Qt6::Gui coverage_config)
 set_target_properties(TestTerrainWalls PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
 add_test(NAME TestTerrainWalls COMMAND TestTerrainWalls)
 
-# Door observations are transient values and require no map or OpenGL context.
-add_executable(TestTerrainDoors TestTerrainDoors.cpp ../src/display/TerrainDoors.cpp)
+# Static door variants require no map or OpenGL context.
+add_executable(TestTerrainDoors TestTerrainDoors.cpp)
 target_link_libraries(TestTerrainDoors PRIVATE Qt6::Core coverage_config)
 set_target_properties(TestTerrainDoors PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
 add_test(NAME TestTerrainDoors COMMAND TestTerrainDoors)
@@ -506,3 +506,25 @@ target_link_libraries(TestTerrainPreviewClock PRIVATE mm_test mm_global
     Qt6::Network Qt6::Gui Qt6::Test Qt6::Widgets coverage_config)
 set_target_properties(TestTerrainPreviewClock PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
 add_test(NAME TestTerrainPreviewClock COMMAND TestTerrainPreviewClock)
+
+add_executable(TestTerrainRoomLighting TestTerrainRoomLighting.cpp
+    ../src/display/TerrainRoomLightRules.cpp ../src/display/TerrainLightMask.cpp)
+target_compile_definitions(TestTerrainRoomLighting PRIVATE TERRAIN_ASSET_DIR="${CMAKE_SOURCE_DIR}/src/resources/pixmaps")
+target_link_libraries(TestTerrainRoomLighting PRIVATE Qt6::Gui coverage_config)
+set_target_properties(TestTerrainRoomLighting PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainRoomLighting COMMAND TestTerrainRoomLighting)
+
+add_executable(TestTerrainLightVisibility TestTerrainLightVisibility.cpp
+    ../src/display/TerrainLightVisibility.cpp ../src/display/TerrainLightMask.cpp
+    ../src/display/TerrainRoomLightRules.cpp
+    ../src/map/coordinate.cpp ../src/global/utils.cpp)
+target_compile_definitions(TestTerrainLightVisibility PRIVATE TERRAIN_ASSET_DIR="${CMAKE_SOURCE_DIR}/src/resources/pixmaps")
+target_link_libraries(TestTerrainLightVisibility PRIVATE Qt6::Gui coverage_config)
+set_target_properties(TestTerrainLightVisibility PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainLightVisibility COMMAND TestTerrainLightVisibility)
+
+add_executable(TestTerrainMovementDiagnostics TestTerrainMovementDiagnostics.cpp
+    ../src/display/TerrainLightingDiagnostics.cpp)
+target_link_libraries(TestTerrainMovementDiagnostics PRIVATE Qt6::Core coverage_config)
+set_target_properties(TestTerrainMovementDiagnostics PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainMovementDiagnostics COMMAND TestTerrainMovementDiagnostics)

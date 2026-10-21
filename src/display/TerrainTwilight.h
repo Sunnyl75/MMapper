@@ -15,6 +15,7 @@ struct Sample final
 {
     Tint tint{};
     bool changing = false;
+    Tint highlights{}; // Overlay-blend colour/strength; separate from night opacity.
 };
 inline float linear(const float value)
 {
@@ -65,6 +66,16 @@ inline Sample sample(double hour, const double dawn, const double dusk, const Ti
     const double scaled = (hour - ((sunrise ? dawn : dusk) - 1.0)) * 5.0;
     const auto segment = std::min(static_cast<std::size_t>(scaled), stops.size() - 2);
     const float progress = static_cast<float>(scaled - static_cast<double>(segment));
-    return {blend(stops[segment], stops[segment + 1], progress), true};
+    const auto tint = blend(stops[segment], stops[segment + 1], progress);
+    // A smooth bell fades the highlight grade out at both ends of the hour.
+    // Unlike the sky wash, its strength does not vanish at the golden stops.
+    const float phase = static_cast<float>(scaled / 5.0);
+    const float envelope = 16.f * phase * phase * (1.f - phase) * (1.f - phase);
+    const float strength = 0.80f * envelope * std::clamp(alpha / 0.35f, 0.f, 1.f);
+    const Tint highlights{0.5f + 0.4f * (tint[0] - 0.5f),
+                          0.5f + 0.4f * (tint[1] - 0.5f),
+                          0.5f + 0.4f * (tint[2] - 0.5f),
+                          strength};
+    return {tint, true, highlights};
 }
 } // namespace terrain_twilight

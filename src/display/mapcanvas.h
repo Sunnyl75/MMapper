@@ -19,7 +19,7 @@
 #include "MapCanvasConfig.h"
 #include "MapCanvasData.h"
 #include "MapCanvasRoomDrawer.h"
-#include "TerrainDoors.h"
+#include "TerrainRoomLighting.h"
 #include "Textures.h"
 
 #include <array>
@@ -183,7 +183,9 @@ private:
 private:
     MapScreen m_mapScreen;
     GameObserver &m_observer;
-    terrain_doors::Observation m_terrainDoors;
+    TerrainRoomLighting m_roomLighting;
+    QTimer m_roomLightTimer;
+    GLRenderState m_roomLightState;
     glm::vec4 m_terrainShadow{0.f};
     float m_terrainDay = -1.f;
     std::optional<MumeMoment> m_terrainPreviewMoment;

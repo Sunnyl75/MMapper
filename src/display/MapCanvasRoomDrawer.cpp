@@ -771,8 +771,14 @@ struct NODISCARD LayerBatchData final
         std::sort(ground.begin(), ground.end(), [](const auto &a, const auto &b) {
             const bool aWater = (a.textureColor.w & 15) == terrain_materials::WATER_PATCH_KIND;
             const bool bWater = (b.textureColor.w & 15) == terrain_materials::WATER_PATCH_KIND;
-            if (aWater != bWater)
-                return aWater;
+            const bool aShore = (a.textureColor.w & 15) == terrain_edges::BANK
+                                && (a.textureColor.w & terrain_edges::ROAD_SHORE) != 0;
+            const bool bShore = (b.textureColor.w & 15) == terrain_edges::BANK
+                                && (b.textureColor.w & terrain_edges::ROAD_SHORE) != 0;
+            const int aOrder = aWater ? 0 : aShore ? 1 : 2;
+            const int bOrder = bWater ? 0 : bShore ? 1 : 2;
+            if (aOrder != bOrder)
+                return aOrder < bOrder;
             return std::tie(a.textureColor.z, a.anchorSizeLayer.y, a.anchorSizeLayer.x)
                    < std::tie(b.textureColor.z, b.anchorSizeLayer.y, b.anchorSizeLayer.x);
         });
@@ -1033,13 +1039,9 @@ private:
                     | static_cast<int>(terrain_walls::rotation(side) << 4u);
         if (paired && (side == 1u || side == 3u))
             flags |= terrain_materials::DOOR_OTHER_SIDE;
-        flags |= static_cast<int>(side << terrain_materials::DOOR_DIRECTION_SHIFT);
-        // Static identity only. The current observation selects state in the
-        // vertex shader, leaving this instance buffer valid across movement.
-        door.textureColor = {tex.position * 16 + static_cast<int>(variant),
-                             terrain_doors::roomWord(room.getServerId().asUint32()),
-                             terrain_doors::roomWord(paired ? peer->getServerId().asUint32() : 0u),
-                             flags};
+        // Closed artwork is purely decorative. Both room-owned halves use
+        // the same saved-room variant, independent of live GMCP door states.
+        door.textureColor = {tex.position * 16 + static_cast<int>(variant), 0, 0, flags};
         m_data.spriteTexture = tex.array;
         m_data.doorSprites.emplace_back(door);
     }
@@ -1057,7 +1059,8 @@ private:
             return;
         const auto terrain = room.getTerrainType();
         const bool route = hasOrganicRoute(room);
-        if (!route && terrain != RoomTerrainEnum::ROAD)
+        const bool water = edgeSector(terrain) == terrain_edges::Sector::WATER;
+        if (!route && terrain != RoomTerrainEnum::ROAD && !water)
             return;
         const auto pos = room.getPosition();
         terrain_edges::Neighbours neighbours{};
@@ -1066,6 +1069,9 @@ private:
             if (next != m_sectors.end())
                 neighbours[static_cast<size_t>(dir)] = next->second;
         }
+        const auto shoreMask = water ? terrain_edges::roadShoreMask(neighbours, wallMask(pos)) : 0u;
+        if (water && !route && shoreMask == 0)
+            return;
         const auto tint = room.getLightType() == RoomLightEnum::DARK
                               ? getTintColor(RoomTintEnum::DARK)
                           : room.getSundeathType() == RoomSundeathEnum::NO_SUNDEATH
@@ -1090,6 +1096,37 @@ private:
                                           | (wallMask(pos) << 24u)),
                          0};
         m_data.spriteTexture = m_textures.terrain_sprites.front().array;
+        if (shoreMask != 0
+            && m_textures.terrainWallPacks.at(
+                static_cast<std::size_t>(terrain_materials::Family::ROAD_SHORE))) {
+            // Rounded ends cross only known road/water neighbours and clear
+            // corners. A wall on either side prevents the overlap.
+            static constexpr std::array<std::array<int, 2>, 8> offsets{
+                {{0, 1}, {0, -1}, {1, 0}, {-1, 0}, {1, 1}, {-1, 1}, {1, -1}, {-1, -1}}};
+            uint32_t known = 0;
+            for (std::size_t i = 0; i < offsets.size(); ++i) {
+                const auto &offset = offsets[i];
+                const auto peer = m_sectors.find(pos + Coordinate{offset[0], offset[1], 0});
+                if (peer != m_sectors.end()
+                    && (peer->second == terrain_edges::Sector::WATER
+                        || peer->second == terrain_edges::Sector::ROAD))
+                    known |= 1u << i;
+            }
+            for (unsigned side = 0; side < 4; ++side) {
+                if (!(shoreMask & (1u << side)))
+                    continue;
+                auto shore = v;
+                const auto seed = terrain_sprites::mix(room.getIdExternal().asUint32()
+                                                       ^ (0x53484f52u + side));
+                shore.textureColor.z = static_cast<int>(
+                    (seed & 65535u) | ((known & overlapMask(pos)) << 16u) | (wallMask(pos) << 24u));
+                shore.textureColor.w = terrain_edges::flags(terrain_edges::BANK, 1u << side)
+                                       | terrain_edges::ROAD_SHORE;
+                m_data.groundSprites.emplace_back(shore);
+            }
+        }
+        if (water && !route)
+            return;
         const bool road = terrain == RoomTerrainEnum::ROAD;
         const auto mask = routeMask(room);
         v.textureColor.w = terrain_edges::flags(road ? terrain_edges::ROAD_BASE
@@ -1922,7 +1959,7 @@ void LayerMeshes::render(const int thisLayer,
                          const bool drawTerrainSprites,
                          const glm::vec4 &shadow,
                          const float day,
-                         const glm::ivec4 &doorState)
+                         const GLRenderState &lighting)
 {
     // Disable texturing for this layer. We want to draw
     // all of the squares in white (using layer boost quads),
@@ -1932,7 +1969,7 @@ void LayerMeshes::render(const int thisLayer,
 
     const bool organicSelected = drawTerrainSprites && thisLayer == focusedLayer;
 
-    const GLRenderState defaultState;
+    const GLRenderState defaultState = organicSelected ? lighting : GLRenderState{};
     const GLRenderState less = defaultState.withDepthFunction(DepthFunctionEnum::LESS);
     const GLRenderState equal = defaultState.withDepthFunction(DepthFunctionEnum::EQUAL);
     const GLRenderState lequal = defaultState.withDepthFunction(DepthFunctionEnum::LEQUAL);
@@ -1968,7 +2005,9 @@ void LayerMeshes::render(const int thisLayer,
     for (const RoomTintEnum tint : ALL_ROOM_TINTS) {
         static_assert(NUM_ROOM_TINTS == 2);
         if (const UniqueMesh &mesh = tints[tint]) {
-            mesh.render(equal_multiplied);
+            auto tintState = equal_multiplied;
+            tintState.uniforms.roomLightTintPass = 1;
+            mesh.render(tintState);
         }
     }
 
@@ -2046,8 +2085,7 @@ void LayerMeshes::render(const int thisLayer,
     if (!disableTextures && organicSelected && doorSprites)
         doorSprites.render(defaultState.withBlend(BlendModeEnum::TRANSPARENCY)
                                .withColor(Colors::white)
-                               .withTerrainDay(day)
-                               .withTerrainDoors(doorState));
+                               .withTerrainDay(day));
 
     // Safety markings must survive legacy load/mob overlays, foregrounds
     // and wall decoration. Keep this above every map-room artwork pass.

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 The MMapper Authors
 precision highp int;
+// Ground and the native room-tint pass must agree for the existing EQUAL
+// depth test, including on drivers that optimise the two shaders differently.
+invariant gl_Position;
 uniform mat4 uMVP;
 uniform vec4 uTerrainShadow;
-uniform ivec4 uTerrainDoors;
 uniform float uTerrainDay;
 layout(std140) uniform NamedColorsBlock
 {
@@ -20,6 +22,7 @@ flat out vec3 vBaseColor;
 flat out ivec3 vSurface;
 flat out float vWinter;
 out vec2 vWorldUV;
+flat out float vRoomLayer;
 flat out ivec2 vGroundSeasons;
 flat out float vGroundMix;
 flat out int vSharedBase;
@@ -48,6 +51,16 @@ void main()
         int rotation = (kind == 2 || kind == 12) ? (aTextureColor.w >> 4) & 3 : 0;
         for (int i = 0; i < rotation; ++i) offset = vec2(-offset.y, offset.x);
         p = aAnchorSizeLayer.xy + offset * (kind == 13 ? 1.0 : aAnchorSizeLayer.z);
+    }
+    if (kind == 4 && (aTextureColor.w & 32768) != 0) {
+        int mask = (aTextureColor.w >> 4) & 15;
+        float along = uv.x * 1.36 - 0.18;
+        float inward = 0.40 - uv.y * 0.54;
+        vec2 local = (mask & 1) != 0 ? vec2(along, 1.0-inward)
+                   : (mask & 2) != 0 ? vec2(along, inward)
+                   : (mask & 4) != 0 ? vec2(1.0-inward, along)
+                                    : vec2(inward, along);
+        p = floor(aAnchorSizeLayer.xy) + local;
     }
     if (uTerrainShadow.w > 0.5 && castsShadow) {
         vec2 direction = uTerrainShadow.xy;
@@ -90,22 +103,12 @@ void main()
     vGroundSeasons = ivec2(previous, following);
     vGroundMix = baseFade;
     vWorldUV = p;
+    vRoomLayer = aAnchorSizeLayer.w;
     vWallMask = (aTextureColor.z >> 24) & 15;
     vWaterClip = ivec3(ivec2(floor(aAnchorSizeLayer.xy)), (aTextureColor.z >> 16) & 255);
     vWinter = allSeason ? 0.0 : mix(previous == 0 ? 1.0 : 0.0, following == 0 ? 1.0 : 0.0, baseFade);
     int tile = aTextureColor.x;
     bool door = kind == 12 && (aTextureColor.w & 256) != 0;
-    if (door) {
-        uint observed = uint(uTerrainDoors.x);
-        int direction = (aTextureColor.w >> 18) & 3;
-        int state = 0;
-        if (observed != 0u && uint(aTextureColor.y) == observed)
-            state = (uTerrainDoors.y >> (direction*2)) & 3;
-        else if (observed != 0u && uint(aTextureColor.z) == observed)
-            state = (uTerrainDoors.y >> ((direction^1)*2)) & 3;
-        vWallStyle = (vWallStyle & ~1024) | (state != 0 ? 1024 : 0);
-        tile += state == 2 ? 6 : 0;
-    }
     vTiles = ivec2(tile + previous * 6, tile + following * 6);
     vTreeUV = uv;
     if ((kind == 10 || kind == 11) && ((aTextureColor.w >> 8) & 1) != 0) vTreeUV.x = 1.0 - vTreeUV.x;

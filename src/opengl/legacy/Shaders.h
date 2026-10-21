@@ -96,6 +96,7 @@ public:
 private:
     void virt_setUniforms(const glm::mat4 &mvp, const GLRenderState::Uniforms &uniforms) final
     {
+        setRoomLighting(uniforms);
         assert(uniforms.textures[0] != INVALID_MM_TEXTURE_ID);
 
         setColor("uColor", uniforms.color);
@@ -114,6 +115,7 @@ public:
 private:
     void virt_setUniforms(const glm::mat4 &mvp, const GLRenderState::Uniforms &uniforms) final
     {
+        setRoomLighting(uniforms);
         assert(uniforms.textures[0] != INVALID_MM_TEXTURE_ID);
 
         setColor("uColor", uniforms.color);
@@ -121,7 +123,7 @@ private:
         setTexture("uTexture", 0);
         setUniform4fv(getUniformLocation("uTerrainShadow"), 1, &uniforms.terrainShadow.x);
         setUniform1fv(getUniformLocation("uTerrainDay"), 1, &uniforms.terrainDay);
-        setUniform4iv(getUniformLocation("uTerrainDoors"), 1, &uniforms.terrainDoors.x);
+        setUniform4fv(getUniformLocation("uSkyTint"), 1, &uniforms.skyTint.x);
     }
 };
 
@@ -232,6 +234,7 @@ public:
 private:
     void virt_setUniforms(const glm::mat4 & /*mvp*/, const GLRenderState::Uniforms &uniforms) final
     {
+        setRoomLighting(uniforms);
         setUniform4fv(getUniformLocation("uSkyTint"), 1, &uniforms.skyTint.x);
     }
 };

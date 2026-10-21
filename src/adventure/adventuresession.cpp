@@ -4,6 +4,8 @@
 
 #include "adventuresession.h"
 
+#include <cmath>
+
 #include <QDebug>
 
 AdventureSession::AdventureSession(QString charName)
@@ -58,11 +60,11 @@ std::chrono::seconds AdventureSession::elapsed() const
 
 QString AdventureSession::formatPoints(double points)
 {
-    if (abs(points) < 1000) {
+    if (std::abs(points) < 1000) {
         return QString::number(points, 'f', 0);
     }
 
-    if (abs(points) < (20 * 1000)) {
+    if (std::abs(points) < (20 * 1000)) {
         return QString::number(points / 1000, 'f', 1) + "k";
     }
 
