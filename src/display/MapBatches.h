@@ -7,6 +7,8 @@
 
 #include <map>
 
+class TerrainLightingDiagnostics;
+
 template<typename T>
 using RoomTintArray = EnumIndexedArray<T, RoomTintEnum, NUM_ROOM_TINTS>;
 
@@ -18,6 +20,7 @@ struct NODISCARD LayerMeshes final
     UniqueMesh groundSprites;
     UniqueMesh terrainSprites;
     UniqueMesh terrainEdges;
+    UniqueMesh waterFlow;
     UniqueMesh terrainWalls;
     UniqueMesh roofCaps;
     UniqueMesh doorSprites;
@@ -35,6 +38,7 @@ struct NODISCARD LayerMeshes final
     UniqueMeshVector upDownExits;
     UniqueMeshVector streamIns;
     UniqueMeshVector streamOuts;
+    UniqueMeshVector organicLegacyStreams;
     UniqueMesh layerBoost;
     bool isValid = false;
 
@@ -47,7 +51,8 @@ struct NODISCARD LayerMeshes final
                 bool drawTerrainSprites,
                 const glm::vec4 &shadow,
                 float day,
-                const GLRenderState &lighting);
+                const GLRenderState &lighting,
+                TerrainLightingDiagnostics *diagnostics = nullptr);
     explicit operator bool() const { return isValid; }
 };
 
@@ -61,6 +66,7 @@ struct NODISCARD LayerMeshesIntermediate final
     Fn groundSprites;
     Fn terrainSprites;
     Fn terrainEdges;
+    Fn waterFlow;
     Fn terrainWalls;
     Fn roofCaps;
     Fn doorSprites;
@@ -78,6 +84,7 @@ struct NODISCARD LayerMeshesIntermediate final
     FnVec upDownExits;
     FnVec streamIns;
     FnVec streamOuts;
+    FnVec organicLegacyStreams;
     Fn layerBoost;
     bool isValid = false;
 

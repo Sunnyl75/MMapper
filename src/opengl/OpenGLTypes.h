@@ -258,6 +258,7 @@ struct NODISCARD GLRenderState final
         std::optional<float> pointSize;
         float terrainDay = -1.f;                // Unknown/disabled uses summer artwork.
         glm::vec4 terrainShadow{0.f};           // projection x/y, opacity, shadow-pass flag
+        glm::ivec4 terrainDoorRoom{0};          // Observed room x/y/z and N/S/E/W open mask.
         glm::vec4 skyTint{0.f, 0.f, 0.f, -1.f}; // Negative alpha keeps legacy time-of-day mode.
         glm::ivec4 roomLightGrid{0};
         glm::vec4 roomLightParams{0.f};
@@ -272,6 +273,13 @@ struct NODISCARD GLRenderState final
     {
         GLRenderState copy = *this;
         copy.uniforms.terrainDay = day;
+        return copy;
+    }
+
+    NODISCARD GLRenderState withTerrainDoors(const glm::ivec4 room) const
+    {
+        GLRenderState copy = *this;
+        copy.uniforms.terrainDoorRoom = room;
         return copy;
     }
 

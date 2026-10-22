@@ -112,6 +112,20 @@ constexpr float joinHalfWidth(const bool road, const Sector across)
                                      : (halfWidth(road) + halfWidth(across == Sector::ROAD)) * 0.5f;
 }
 
+// Sprite artwork faces north. Incoming flow points into the owning room;
+// outgoing flow points toward the selected boundary. Directions are NESW.
+constexpr unsigned flowRotation(const unsigned side, const bool incoming)
+{
+    constexpr std::array<unsigned, 4> rotations{0, 2, 3, 1};
+    return (rotations.at(side) + (incoming ? 2u : 0u)) & 3u;
+}
+constexpr unsigned flowVariant(const uint32_t roomId, const unsigned side)
+{
+    // Both observations of a shared flow may use the same decorative variant;
+    // the side and saved map room ID keep it stable without server IDs.
+    return terrain_sprites::mix(roomId ^ (0x464c4f57u + side)) % 24u;
+}
+
 constexpr uint32_t seed(const uint32_t savedRoomId)
 {
     return terrain_sprites::mix(savedRoomId ^ 0x45444745u) & 65535u;

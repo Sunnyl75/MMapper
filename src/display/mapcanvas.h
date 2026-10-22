@@ -19,6 +19,7 @@
 #include "MapCanvasConfig.h"
 #include "MapCanvasData.h"
 #include "MapCanvasRoomDrawer.h"
+#include "TerrainDoorState.h"
 #include "TerrainRoomLighting.h"
 #include "Textures.h"
 
@@ -184,6 +185,8 @@ private:
     MapScreen m_mapScreen;
     GameObserver &m_observer;
     TerrainRoomLighting m_roomLighting;
+    terrain_doors::Observation m_doorObservation;
+    const bool m_liveDoorsEnabled;
     QTimer m_roomLightTimer;
     GLRenderState m_roomLightState;
     glm::vec4 m_terrainShadow{0.f};

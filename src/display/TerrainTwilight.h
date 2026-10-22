@@ -41,14 +41,18 @@ inline Tint blend(const Tint &a, const Tint &b, const float progress)
 }
 inline Sample sample(double hour, const double dawn, const double dusk, const Tint &night)
 {
-    if (!std::isfinite(hour) || !std::isfinite(dawn) || !std::isfinite(dusk) || dawn < 1.0
-        || dusk > 24.0 || dawn >= dusk)
+    if (!std::isfinite(hour) || !std::isfinite(dawn) || !std::isfinite(dusk) || dawn < 0.0
+        || dusk > 23.0 || dawn + 1.0 > dusk)
         return {};
     hour = std::fmod(std::fmod(hour, 24.0) + 24.0, 24.0);
-    const bool sunrise = hour >= dawn - 1.0 && hour < dawn;
-    const bool sunset = hour >= dusk - 1.0 && hour < dusk;
+    // These are the STARTS of master's one-hour DAWN/DUSK warnings, when
+    // MumeClockWidget changes colour via MumeMoment::toTimeOfDay(). Fit the
+    // entire palette into that SAME hour: red/DAWN -> DAY, blue/DUSK -> NIGHT.
+    // No extra preceding hour or trailing fade; dusk can end at midnight.
+    const bool sunrise = hour >= dawn && hour < dawn + 1.0;
+    const bool sunset = hour >= dusk && hour < dusk + 1.0;
     if (!sunrise && !sunset)
-        return {hour < dawn || hour >= dusk ? night : Tint{}, false};
+        return {hour < dawn || hour >= dusk + 1.0 ? night : Tint{}, false};
     const float alpha = night[3];
     const std::array<Tint, 6> dawnStops{night,
                                         Tint{0.30f, 0.27f, 0.51f, alpha * 0.80f},
@@ -63,11 +67,12 @@ inline Sample sample(double hour, const double dawn, const double dusk, const Ti
                                         Tint{0.32f, 0.25f, 0.47f, alpha * 0.70f},
                                         night};
     const auto &stops = sunrise ? dawnStops : duskStops;
-    const double scaled = (hour - ((sunrise ? dawn : dusk) - 1.0)) * 5.0;
+    const double scaled = (hour - (sunrise ? dawn : dusk)) * 5.0;
     const auto segment = std::min(static_cast<std::size_t>(scaled), stops.size() - 2);
     const float progress = static_cast<float>(scaled - static_cast<double>(segment));
     const auto tint = blend(stops[segment], stops[segment + 1], progress);
-    // A smooth bell fades the highlight grade out at both ends of the hour.
+    // A smooth bell peaks halfway through the one-hour clock warning,
+    // fading to zero at the start and the exact DAY/NIGHT boundary.
     // Unlike the sky wash, its strength does not vanish at the golden stops.
     const float phase = static_cast<float>(scaled / 5.0);
     const float envelope = 16.f * phase * phase * (1.f - phase) * (1.f - phase);

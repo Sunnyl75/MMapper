@@ -116,7 +116,9 @@ void main()
     float warmAlpha = light.a*0.24;
     // The cached blue channel is corner shadow; it also works in lit interiors
     // where there is no night overlay to remove.
-    float shadowAlpha = light.b;
+    // A neighbouring pool fills this shade too; do not retain the former
+    // winning source's corner shadow through otherwise bright illumination.
+    float shadowAlpha = light.b*(1.0-light.a);
     float underAlpha = shadowAlpha+skyAlpha*(1.0-shadowAlpha);
     float alpha = warmAlpha+underAlpha*(1.0-warmAlpha);
     vec3 warmth = vec3(1.0,light.g,0.34);

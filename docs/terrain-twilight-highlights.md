@@ -1,9 +1,9 @@
 # Dawn and dusk highlight blending
 
-The organic terrain shader now colours material highlights during the hour before
-MUME sunrise and sunset. It uses overlay blending, weighted by material luminance,
-so bright grass, pale rocks and snow catch the sky colour without washing out dark
-ink. The existing time-of-day overlay still supplies the gradual night darkening.
+The organic terrain shader colours material highlights during the native clock's
+one-hour DAWN/DUSK warning phases. It uses overlay blending, weighted by material
+luminance, so bright grass, pale rocks and snow catch the sky colour without
+washing out dark ink. The existing time-of-day overlay still supplies the gradual night darkening.
 
 The colour follows the existing smooth violet/rose/peach/gold dawn sequence and
 gold/peach/rose/violet dusk sequence. A smooth strength envelope fades the new
@@ -26,7 +26,7 @@ older full-screen sky overlay's indoor handling or light-source rules.
 
 Scope: organic terrain materials and foreground sprites. Legacy room textures,
 characters, labels and selections retain their previous rendering. No map-index,
-movement, door, timing or preview-clock behavior changes.
+movement, door or preview-clock control changes.
 
 The small CPU palette and strength envelope remain in TerrainTwilight.h. The
 material blend and eligibility check are at the end of the terrain fragment
@@ -37,3 +37,7 @@ weather pass. Nothing is cached in map geometry.
 Validation extends TestTerrainTwilight and terrain_edges_render.py. The latter
 checks the production shader on desktop GL and GLES, including ink protection,
 alpha preservation, indoor exclusion, artificial-light suppression and disabling.
+
+Timing is specified in [terrain-twilight-warning-hour.md](terrain-twilight-warning-hour.md).
+The full palette now starts with the countdown's red/blue warning and completes
+at DAY/NIGHT, exactly one game hour later. The material blend itself is unchanged.

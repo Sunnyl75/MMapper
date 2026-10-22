@@ -110,6 +110,15 @@ shade=render(tint=(0,0,0,0))
 check(shade(32,32)[0]<day(32,32)[0])
 check(shade(32,32)[3]>day(32,32)[3])
 check(shade(96,32)==bytes([0,0,0,0]))
+# Strong overlapping illumination must erase a cached corner shadow rather
+# than keeping the darker room's shadow as a visible seam through the pool.
+for tint in [(0,0,0,0),(.03,.04,.12,.6)]:
+ grid([255,0,0,0],[0,0,0,0],shadow=80)
+ illuminated=render(tint=tint)
+ grid([255,0,0,0],[0,0,0,0],shadow=0)
+ clear=render(tint=tint)
+ check(illuminated(32,32)==clear(32,32))
+
 # The same mask must reduce twilight, not replace its colour outside lit rooms.
 grid([230,100,20,110],[0,0,0,0])
 twilight=render(tint=(.76,.34,.49,.25));plain=render(strength=0,tint=(.76,.34,.49,.25))

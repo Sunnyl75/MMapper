@@ -1,0 +1,69 @@
+name: Mac Intel playtest
+
+on:
+  push:
+    branches:
+      - feature/organic-terrain-with-tokens
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-intel-playtest-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Optimised Mac Intel application
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Verify Intel runner
+        run: test "$(uname -m)" = x86_64
+
+      - name: Restore compiler cache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          create-symlink: true
+          key: build-macos-15-intel
+
+      - uses: lukka/get-cmake@latest
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.8.3
+          arch: clang_64
+          cache: true
+          modules: qtwebsockets qtmultimedia
+
+      - name: Configure optimised application
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+            -DCPACK_PACKAGE_DIRECTORY="$GITHUB_WORKSPACE/artifact" \
+            -DWITH_WEBSOCKET=ON -DWITH_QTKEYCHAIN=ON \
+            -DPACKAGE_TYPE=Dmg \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build application
+        run: cmake --build build --target mmapper --parallel
+
+      - name: Package application
+        run: cd build && cpack
+
+      - name: Upload Mac Intel DMG
+        uses: actions/upload-artifact@v7
+        with:
+          name: mmapper-mac-intel-playtest-${{ github.sha }}
+          path: artifact/*.dmg*
+          if-no-files-found: error
+          retention-days: 30

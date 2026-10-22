@@ -50,6 +50,8 @@ QDockWidget *createTerrainPreviewClock(QWidget *parent,
     auto *const layout = new QFormLayout(widget);
     auto *const enabled = new QCheckBox(QObject::tr("Use preview time"), widget);
     enabled->setObjectName("TerrainPreviewClockEnabled");
+    enabled->setToolTip(QObject::tr("Preview changes the map's lighting, shadows and seasons. "
+                                    "The main MMapper clock continues to show live game time."));
     auto *const year = new QSpinBox(widget);
     auto *const month = new StepSpinBox(widget);
     auto *const day = new StepSpinBox(widget);
@@ -68,7 +70,7 @@ QDockWidget *createTerrainPreviewClock(QWidget *parent,
     month->setValue(10);
     day->setRange(1, MUME_DAYS_PER_MONTH);
     day->setValue(15);
-    hour->setRange(1, MUME_HOURS_PER_DAY);
+    hour->setRange(0, MUME_HOURS_PER_DAY - 1);
     hour->setValue(12);
     minute->setRange(0, MUME_MINUTES_PER_HOUR - 1);
     speed->addItem(QObject::tr("Paused"), 0);
@@ -79,7 +81,7 @@ QDockWidget *createTerrainPreviewClock(QWidget *parent,
     layout->addRow(QObject::tr("Year"), year);
     layout->addRow(QObject::tr("Month"), month);
     layout->addRow(QObject::tr("Day"), day);
-    layout->addRow(QObject::tr("Hour"), hour);
+    layout->addRow(QObject::tr("Hour (00–23)"), hour);
     layout->addRow(QObject::tr("Minute"), minute);
     layout->addRow(QObject::tr("Advance"), speed);
     dock->setWidget(widget);
@@ -88,7 +90,7 @@ QDockWidget *createTerrainPreviewClock(QWidget *parent,
         return MumeMoment{year->value(),
                           month->value() - 1,
                           day->value() - 1,
-                          hour->value() - 1,
+                          hour->value(),
                           minute->value()};
     };
     const auto apply = [=]() {
@@ -108,7 +110,7 @@ QDockWidget *createTerrainPreviewClock(QWidget *parent,
         year->setValue(next.year);
         month->setValue(next.month + 1);
         day->setValue(next.day + 1);
-        hour->setValue(next.hour + 1);
+        hour->setValue(next.hour);
         minute->setValue(next.minute);
         apply();
     };

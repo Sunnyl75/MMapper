@@ -195,10 +195,11 @@ GLWeather::GLWeather(OpenGL &gl,
     m_observer.sig2_tick.connect(m_lifetime, [this](const MumeMoment &moment) {
         m_clockMoment = moment;
         m_clockAnchorTime = std::chrono::steady_clock::now();
-        const auto dawnDusk = MumeClock::getDawnDusk(moment.month);
+        // The clock widget uses this same classification for its warning
+        // colours. Animate only its native one-hour DAWN/DUSK windows.
+        const auto timeOfDay = moment.toTimeOfDay();
         if (!m_previewMoment && !m_data.isEmpty()
-            && (m_skyChanging || moment.hour == dawnDusk.dawnHour - 1
-                || moment.hour == dawnDusk.duskHour - 1))
+            && (m_skyChanging || timeOfDay == MumeTimeEnum::DAWN || timeOfDay == MumeTimeEnum::DUSK))
             m_animationManager.requestUpdate();
     });
 

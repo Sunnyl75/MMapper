@@ -921,6 +921,23 @@ void MapCanvas::hostPaintGL()
                          lightingSettings.roomLightFlicker.get(),
                          MapCanvasConfig::getShowPerfStats(),
                          lightingSettings.advanced.maximumFps.get());
+    if (diagnostics.enabled()) {
+        const auto room = m_data.getCurrentRoom();
+        if (room) {
+            unsigned horizontal = 0, vertical = 0;
+            for (const auto direction : ALL_EXITS_NESWUD) {
+                if (!room.getExit(direction).getExitFlags().isDoor())
+                    continue;
+                if (isNESW(direction))
+                    ++horizontal;
+                else
+                    ++vertical;
+            }
+            diagnostics.roomContext(room.getIdExternal().asUint32(), horizontal, vertical);
+        } else {
+            diagnostics.clearRoomContext();
+        }
+    }
     auto frameTiming = diagnostics.measure(TerrainLightingDiagnostics::Stage::FRAME);
 
     static thread_local double longestBatchMs = 0.0;
@@ -964,6 +981,8 @@ void MapCanvas::hostPaintGL()
             auto timing = diagnostics.measure(TerrainLightingDiagnostics::Stage::DRAW);
             actuallyPaintGL();
         }
+        // Measure submission before the existing on-screen stats glFinish().
+        diagnostics.drawSubmitted();
     }
 
     if (!showPerfStats) {
@@ -1031,6 +1050,8 @@ void MapCanvas::hostPaintGL()
 
     longestBatchMs = std::max(batchTime, longestBatchMs);
     print(QString::asprintf("Worst updateBatches: %.1f ms", longestBatchMs));
+    for (const auto &line : diagnostics.performanceLines(m_liveDoorsEnabled))
+        print(line);
 
 #ifdef Q_OS_WASM
     {
@@ -1188,6 +1209,21 @@ void MapCanvas::renderMapBatches()
 
     const auto shadow = m_terrainShadow;
     const float terrainDay = settings.seasonalTerrain.get() ? m_terrainDay : -1.f;
+    glm::ivec4 doorRoom{0};
+    auto &diagnostics = m_roomLighting.diagnostics();
+    if (wantTerrainSprites && m_liveDoorsEnabled) {
+        auto timing = diagnostics.measure(TerrainLightingDiagnostics::Stage::DOOR_SELECT);
+        const auto currentRoom = m_data.getCurrentRoom();
+        if (currentRoom && m_doorObservation.appliesTo(currentRoom.getServerId().asUint32())) {
+            const auto position = currentRoom.getPosition();
+            doorRoom = {position.x,
+                        position.y,
+                        position.z,
+                        static_cast<int>(m_doorObservation.openMask())};
+        }
+    }
+    const auto terrainState = m_roomLightState.withSkyTint(m_weather.getTerrainSkyTint())
+                                  .withTerrainDoors(doorRoom);
     const auto drawLayer = [this,
                             &batches,
                             &batchedMeshes,
@@ -1195,7 +1231,8 @@ void MapCanvas::renderMapBatches()
                             wantDoorNames,
                             wantTerrainSprites,
                             shadow,
-                            terrainDay](const int thisLayer, const int currentLayer) {
+                            terrainDay,
+                            terrainState](const int thisLayer, const int currentLayer) {
         const auto it_mesh = batchedMeshes.find(thisLayer);
         if (it_mesh != batchedMeshes.end()) {
             LayerMeshes &meshes = it_mesh->second;
@@ -1204,7 +1241,9 @@ void MapCanvas::renderMapBatches()
                           wantTerrainSprites,
                           shadow,
                           terrainDay,
-                          m_roomLightState.withSkyTint(m_weather.getTerrainSkyTint()));
+                          terrainState,
+                          m_roomLighting.diagnostics().enabled() ? &m_roomLighting.diagnostics()
+                                                                 : nullptr);
         }
 
         if (wantExtraDetail) {

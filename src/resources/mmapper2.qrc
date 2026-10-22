@@ -207,6 +207,8 @@
     <file>pixmaps/terrain-doors.png</file>
     <file>pixmaps/terrain-death-trap.png</file>
     <file>pixmaps/terrain-road-shores.png</file>
+    <file>pixmaps/terrain-rapids-patches.png</file>
+    <file>pixmaps/terrain-water-flow.png</file>
         <file>pixmaps/terrain-borders-seasons.png</file>
         <file>pixmaps/organic-terrain/packs.json</file>
         <file>pixmaps/terrain-hills.png</file>

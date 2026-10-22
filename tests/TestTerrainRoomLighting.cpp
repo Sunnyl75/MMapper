@@ -7,6 +7,7 @@
 #include <iostream>
 #include <set>
 
+#include <QColor>
 #include <QJsonDocument>
 
 int main()
@@ -52,11 +53,16 @@ int main()
     open.walls.fill(0);
     auto clear = steady;
     MaskAtlas::applyClip(clear, MaskAtlas::clip(open));
-    assert(clear == steady);
+    for (int y = 0; y < clear.height(); ++y)
+        for (int x = 0; x < clear.width(); ++x) {
+            assert(qAlpha(clear.pixel(x, y)) == qAlpha(steady.pixel(x, y)));
+            assert(qBlue(clear.pixel(x, y)) == 0); // Open terrain has no invented wall corners.
+        }
     // The circular pool extends past the owning square along every axis.
     for (const auto point : {std::array<int, 2>{5, 16}, {26, 16}, {16, 5}, {16, 26}})
         assert(qAlpha(clear.pixel(point[0], point[1])) > 0);
-    assert(qAlpha(clear.pixel(3, 3)) == 0); // Circular, not another square tile.
+    assert(qAlpha(clear.pixel(27, 16)) >= 10); // The free rim must remain visible.
+    assert(qAlpha(clear.pixel(3, 3)) == 0);    // Circular, not another square tile.
     for (unsigned dir = 0; dir < 4; ++dir) {
         auto neighbours = open;
         neighbours.walls[4] = static_cast<uint8_t>(1u << dir);
@@ -96,8 +102,8 @@ int main()
         edgeLow = std::min(edgeLow, qAlpha(frame.pixel(26, 16)));
         edgeHigh = std::max(edgeHigh, qAlpha(frame.pixel(26, 16)));
         MaskAtlas::applyClip(frame, closedClip);
-        cornerLow = std::min(cornerLow, qBlue(frame.pixel(10, 10)));
-        cornerHigh = std::max(cornerHigh, qBlue(frame.pixel(10, 10)));
+        cornerLow = std::min(cornerLow, qBlue(frame.pixel(9, 9)));
+        cornerHigh = std::max(cornerHigh, qBlue(frame.pixel(9, 9)));
         for (int y = 0; y < 32; ++y)
             for (int x = 0; x < 32; ++x)
                 if (x <= 8 || x >= 23 || y <= 8 || y >= 23)
@@ -114,6 +120,33 @@ int main()
     MaskAtlas::composite(reversed, steady, 0, 0);
     assert(composed == reversed); // Overlapping pools must not erase each other or add brightness.
     assert(qAlpha(composed.pixel(20, 16)) >= qAlpha(steady.pixel(20, 16)));
+    // A tiny change in which light is brighter must not switch its shadow or
+    // temperature. Brightness stays bounded rather than adding overlapping pools.
+    const auto overlap = [](const int a, const int b) {
+        QImage image(1, 1, QImage::Format_RGBA8888);
+        image.fill(0);
+        QImage firstPixel(1, 1, QImage::Format_RGBA8888),
+            secondPixel(1, 1, QImage::Format_RGBA8888);
+        firstPixel.setPixelColor(0, 0, QColor(255, 184, 30, a));
+        secondPixel.setPixelColor(0, 0, QColor(255, 184, 0, b));
+        MaskAtlas::composite(image, firstPixel, 0, 0);
+        MaskAtlas::composite(image, secondPixel, 0, 0);
+        return image.pixelColor(0, 0);
+    };
+    const auto brighterFirst = overlap(101, 100), brighterSecond = overlap(100, 101);
+    assert(brighterFirst == brighterSecond);
+    assert(brighterFirst.alpha() == 101 && brighterFirst.blue() == 30);
+    // An open join between two walled corridor rooms is not another corner.
+    auto corridor = open;
+    for (int x = 0; x < 3; ++x)
+        corridor.walls[static_cast<size_t>(3 + x)] = 3;
+    auto corridorTile = steady;
+    MaskAtlas::applyClip(corridorTile, MaskAtlas::clip(corridor));
+    for (int x = 8; x < 29; ++x) {
+        assert(qBlue(corridorTile.pixel(x, 16)) == 0);
+        assert(qAlpha(corridorTile.pixel(x, 16)) == qAlpha(steady.pixel(x, 16)));
+    }
+    assert(qBlue(corridorTile.pixel(22, 9)) > 0); // Real wall shade survives across the join.
     using T = RoomTerrainEnum;
     using L = RoomLightEnum;
     for (const auto terrain : {T::INDOORS, T::TUNNEL, T::CAVERN}) {

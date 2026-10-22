@@ -94,8 +94,8 @@ QImage alignRoadShoreSheet(const QImage &input)
     return result;
 }
 
-// Put both states in the SAME two-room frame around the hinge line. Keeping
-// the top of the jamb aligned prevents the generated open row drifting inward.
+// Both states use the SAME authored posts and two-room frame. The old source
+// open row has a swung leaf: instead, expose the closed row's posts alone.
 QImage alignDoorSheet(const QImage &input)
 {
     if (input.isNull() || input.width() % 6 || input.height() % 2
@@ -133,9 +133,32 @@ QImage alignDoorSheet(const QImage &input)
     const double scale = cell * 0.40 / sourceCell;
     const double halfJamb = (bands[0].second - bands[0].first) * 0.5;
     for (int row = 0; row < 4; ++row) {
-        const auto limits = bands[static_cast<std::size_t>(row % 2)];
+        const auto limits = bands[0];
         const double hinge = limits.first + halfJamb;
         for (int col = 0; col < 6; ++col) {
+            // Above the leaf, the alpha silhouette contains two separate post
+            // caps. Their widest internal gap locates this variant's doorway.
+            int gapStart = -1, bestStart = 0, bestEnd = 0;
+            bool seenPost = false;
+            for (int x = 0; x < sourceCell; ++x) {
+                bool cap = false;
+                for (int y = limits.first + (limits.second - limits.first) / 8;
+                     y < limits.first + (limits.second - limits.first) / 5;
+                     ++y)
+                    cap |= qAlpha(source.pixel(col * sourceCell + x, y)) >= 64;
+                if (cap) {
+                    if (gapStart >= 0 && x - gapStart > bestEnd - bestStart) {
+                        bestStart = gapStart;
+                        bestEnd = x;
+                    }
+                    seenPost = true;
+                    gapStart = -1;
+                } else if (seenPost && gapStart < 0) {
+                    gapStart = x;
+                }
+            }
+            if (row % 2 != 0 && bestEnd - bestStart < sourceCell / 4)
+                continue; // No appropriate posts: do not invent an open sprite.
             painter.save();
             painter.setClipRect(QRect{col * cell, row * cell, cell, cell});
             painter.drawImage(QRectF{col * cell + cell * 0.30,
@@ -147,6 +170,14 @@ QImage alignDoorSheet(const QImage &input)
                                     limits.first,
                                     sourceCell,
                                     limits.second - limits.first});
+            if (row % 2 != 0) {
+                painter.setCompositionMode(QPainter::CompositionMode_Clear);
+                painter.fillRect(QRectF{col * cell + cell * 0.30 + bestStart * scale,
+                                        static_cast<double>(row * cell),
+                                        (bestEnd - bestStart) * scale,
+                                        static_cast<double>(cell)},
+                                 Qt::transparent);
+            }
             painter.restore();
         }
     }
