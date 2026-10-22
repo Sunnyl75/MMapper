@@ -20,6 +20,7 @@
 #include "../mapdata/mapdata.h"
 #include "../mapdata/roomselection.h"
 #include "../observer/gameobserver.h"
+#include "../proxy/GmcpMessage.h"
 #include "InfomarkSelection.h"
 #include "MapCanvasData.h"
 #include "MapCanvasRoomDrawer.h"
@@ -36,8 +37,11 @@
 #include <utility>
 #include <vector>
 
+#include <QElapsedTimer>
 #include <QGestureEvent>
 #include <QGuiApplication>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMessageLogContext>
 #include <QOpenGLDebugMessage>
 #include <QSize>
@@ -79,6 +83,7 @@ MapCanvas::MapCanvas(MapData &mapData,
     , MapCanvasInputState{prespammedPath}
     , m_mapScreen{static_cast<MapCanvasViewport &>(*this)}
     , m_observer{observer}
+    , m_liveDoorsEnabled{qEnvironmentVariableIntValue("MMAPPER_DISABLE_LIVE_DOORS") <= 0}
     , m_opengl{}
     , m_glFont{m_opengl}
     , m_data{mapData}
@@ -116,11 +121,70 @@ MapCanvas::MapCanvas(MapData &mapData,
     setConfig().canvas.roomIllumination.registerChangeCallback(m_lifetime, redrawLighting);
     setConfig().canvas.roomLightStrength.registerChangeCallback(m_lifetime, redrawLighting);
     setConfig().canvas.roomLightFlicker.registerChangeCallback(m_lifetime, redrawLighting);
+    // Optional observation only: no map changes, redraws or polling. With the
+    // variable unset there is no extra GMCP subscriber during normal play.
+    if (qEnvironmentVariableIntValue("MMAPPER_DOOR_TRACE") > 0) {
+        QElapsedTimer timer;
+        timer.start();
+        qInfo() << "[door-trace] Enabled: incoming room/exit updates only";
+        m_observer.sig2_sentToUserGmcp.connect(m_lifetime, [timer](const GmcpMessage &message) {
+            // MUME sends Room.UpdateExits. The existing message enum spells it
+            // Room.Update.Exits, so accept the documented name directly too.
+            const auto messageName = message.getName().toQString();
+            const bool exitUpdate = message.isRoomUpdateExits()
+                                    || messageName.compare(QStringLiteral("Room.UpdateExits"),
+                                                           Qt::CaseInsensitive)
+                                           == 0;
+            if ((!message.isRoomInfo() && !exitUpdate) || !message.getJson())
+                return;
+            const auto doc = QJsonDocument::fromJson(message.getJson()->toQString().toUtf8());
+            if (!doc.isObject()) {
+                qInfo() << "[door-trace]" << timer.elapsed() << "ms non-object room/exit update";
+                return;
+            }
+            const auto object = doc.object();
+            // Room.Info includes descriptions and other unrelated data. Keep
+            // just its room ID and exits; preserve partial exit updates intact.
+            const auto summary = message.isRoomInfo()
+                                     ? QJsonObject{{QStringLiteral("id"), object.value("id")},
+                                                   {QStringLiteral("exits"), object.value("exits")}}
+                                     : object;
+            qInfo().noquote() << "[door-trace]" << timer.elapsed() << "ms" << messageName
+                              << QString::fromUtf8(
+                                     QJsonDocument(summary).toJson(QJsonDocument::Compact));
+        });
+    }
     m_observer.sig2_connected.connect(m_lifetime, [this]() {
         m_roomLighting.clearObservation();
+        m_doorObservation.clear();
+        m_frameManager.requestUpdate();
+    });
+    m_roomLighting.diagnostics().setLiveDoorsEnabled(m_liveDoorsEnabled);
+    m_roomLighting.diagnostics().setDisplayEnabled(MapCanvasConfig::getShowPerfStats());
+    setConfig().canvas.advanced.printPerfStats.registerChangeCallback(m_lifetime, [this]() {
+        m_roomLighting.diagnostics().setDisplayEnabled(MapCanvasConfig::getShowPerfStats());
         m_frameManager.requestUpdate();
     });
     m_observer.sig2_sentToUserGmcp.connect(m_lifetime, [this](const GmcpMessage &message) {
+        if (m_liveDoorsEnabled) {
+            auto &diagnostics = m_roomLighting.diagnostics();
+            auto stage = TerrainLightingDiagnostics::Stage::DOOR_OTHER;
+            if (diagnostics.enabled()) {
+                if (message.isRoomInfo())
+                    stage = TerrainLightingDiagnostics::Stage::DOOR_ROOM_INFO;
+                else if (terrain_doors::isExitUpdate(message))
+                    stage = TerrainLightingDiagnostics::Stage::DOOR_EXIT_UPDATE;
+            }
+            bool changed = false;
+            {
+                auto timing = diagnostics.measure(stage);
+                changed = m_doorObservation.observe(message);
+            }
+            if (changed && getConfig().canvas.organicTerrain.get()) {
+                diagnostics.redrawRequested(TerrainLightingDiagnostics::Cause::DOOR);
+                m_frameManager.requestUpdate();
+            }
+        }
         if (message.isRoomInfo() || message.isCharVitals() || message.isEventMoved()
             || message.isCoreGoodbye()) {
             if (m_roomLighting.observe(message)) {
@@ -1446,6 +1510,8 @@ void MapCanvas::onMovement()
 void MapCanvas::slot_dataLoaded()
 {
     m_roomLighting.resetIndex();
+    m_doorObservation.clear();
+    m_roomLighting.diagnostics().clearRoomContext();
     onMovement();
     requestForceUpdateMeshes();
 }

@@ -494,6 +494,11 @@ target_link_libraries(TestTerrainDoors PRIVATE Qt6::Core coverage_config)
 set_target_properties(TestTerrainDoors PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
 add_test(NAME TestTerrainDoors COMMAND TestTerrainDoors)
 
+add_executable(TestTerrainDoorState TestTerrainDoorState.cpp ../src/display/TerrainDoorState.cpp)
+target_link_libraries(TestTerrainDoorState PRIVATE mm_test Qt6::Core coverage_config)
+set_target_properties(TestTerrainDoorState PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainDoorState COMMAND TestTerrainDoorState)
+
 add_executable(TestTerrainTwilight TestTerrainTwilight.cpp)
 target_link_libraries(TestTerrainTwilight PRIVATE coverage_config)
 set_target_properties(TestTerrainTwilight PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")

@@ -7,6 +7,7 @@ invariant gl_Position;
 uniform mat4 uMVP;
 uniform vec4 uTerrainShadow;
 uniform float uTerrainDay;
+uniform ivec4 uTerrainDoorRoom; // Observed room x/y/z and N/S/E/W open mask.
 layout(std140) uniform NamedColorsBlock
 {
     vec4 uNamedColors[MAX_NAMED_COLORS];
@@ -48,7 +49,8 @@ void main()
     vec2 p = aAnchorSizeLayer.xy + (uv - vec2(0.5, 0.06)) * aAnchorSizeLayer.z;
     if (kind >= 2 && kind != 8) {
         vec2 offset = uv - vec2(0.5);
-        int rotation = (kind == 2 || kind == 12) ? (aTextureColor.w >> 4) & 3 : 0;
+        bool flow = kind == 10 && (aTextureColor.w & 262144) != 0;
+        int rotation = (kind == 2 || kind == 12 || flow) ? (aTextureColor.w >> 4) & 3 : 0;
         for (int i = 0; i < rotation; ++i) offset = vec2(-offset.y, offset.x);
         p = aAnchorSizeLayer.xy + offset * (kind == 13 ? 1.0 : aAnchorSizeLayer.z);
     }
@@ -68,9 +70,19 @@ void main()
             int height = (aTextureColor.w >> 15) & 3;
             direction *= height == 1 ? 0.35 : height == 2 ? 0.55 : 1.0;
         }
-        vec2 across = normalize(vec2(direction.y, -direction.x));
-        p = aAnchorSizeLayer.xy + aAnchorSizeLayer.z
-            * (across * (uv.x - 0.5) * 0.75 + direction * (uv.y - 0.06));
+        if (kind == 8 && (aTextureColor.w & 32768) == 0) {
+            // Relief keeps the artwork's east/west profile. Cover the swept
+            // footprint without rotating the peaks or collapsing at E/W light.
+            vec2 tip = direction * 0.94;
+            vec2 lo = min(vec2(0.0),tip)-vec2(0.52,0.16);
+            vec2 hi = max(vec2(0.0),tip)+vec2(0.52,0.16);
+            uv = mix(lo,hi,uv); // Ground coordinates for the relief shadow only.
+            p = aAnchorSizeLayer.xy + aAnchorSizeLayer.z * uv;
+        } else {
+            vec2 across = normalize(vec2(direction.y, -direction.x));
+            p = aAnchorSizeLayer.xy + aAnchorSizeLayer.z
+                * (across * (uv.x - 0.5) * 0.75 + direction * (uv.y - 0.06));
+        }
     }
     gl_Position = uMVP * vec4(p, aAnchorSizeLayer.w, 1.0);
     // Day zero starts winter; successive seasons start on days 90, 180, 270.
@@ -110,6 +122,18 @@ void main()
     int tile = aTextureColor.x;
     bool door = kind == 12 && (aTextureColor.w & 256) != 0;
     vTiles = ivec2(tile + previous * 6, tile + following * 6);
+    if (door && uTerrainDoorRoom.w != 0) {
+        int turn = (aTextureColor.w >> 4) & 3;
+        int side = turn == 0 ? 0 : turn == 2 ? 1 : turn == 3 ? 2 : 3;
+        const ivec2 steps[4] = ivec2[4](ivec2(0,1),ivec2(0,-1),ivec2(1,0),ivec2(-1,0));
+        ivec3 owner = ivec3(ivec2(floor(aAnchorSizeLayer.xy)),int(aAnchorSizeLayer.w));
+        bool own = all(equal(owner,uTerrainDoorRoom.xyz));
+        bool paired = (aTextureColor.w & 1024) != 0
+            && all(equal(owner+ivec3(steps[side],0),uTerrainDoorRoom.xyz));
+        int observedSide = own ? side : (side ^ 1);
+        if ((own || paired) && (uTerrainDoorRoom.w & (1 << observedSide)) != 0)
+            vTiles += ivec2(6); // Open frames reuse the exact closed-frame posts.
+    }
     vTreeUV = uv;
     if ((kind == 10 || kind == 11) && ((aTextureColor.w >> 8) & 1) != 0) vTreeUV.x = 1.0 - vTreeUV.x;
     vSeasonMix = fade;

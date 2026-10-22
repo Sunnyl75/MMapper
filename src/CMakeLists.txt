@@ -98,6 +98,8 @@ set(mmapper_SRCS
     display/Textures.cpp
     display/Textures.h
     display/TerrainDoors.h
+    display/TerrainDoorState.cpp
+    display/TerrainDoorState.h
     display/TerrainSprites.h
     display/TerrainEdges.h
     display/TerrainMaterials.h

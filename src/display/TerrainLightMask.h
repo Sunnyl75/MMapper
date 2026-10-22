@@ -21,7 +21,12 @@ public:
     static constexpr int PIXELS = 16; // Mask texture density per map room.
     static constexpr int HALO_PIXELS = 32;
     static constexpr int HALO_OFFSET = 8;
-    using Clip = std::array<uint32_t, HALO_PIXELS>;
+
+    struct Clip final
+    {
+        std::array<uint32_t, HALO_PIXELS> reachable{};
+        std::array<std::array<uint8_t, HALO_PIXELS>, HALO_PIXELS> wallShade{};
+    };
     explicit MaskAtlas(const QImage &sheet);
     static Clip clip(const WallNeighborhood &neighbours);
     QImage tile(uint32_t seed, double seconds, int strength, int flicker) const;

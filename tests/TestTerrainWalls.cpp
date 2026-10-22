@@ -187,6 +187,24 @@ int main(int argc, char **argv)
     const QImage doorSource{QStringLiteral(TERRAIN_ASSET_DIR "/terrain-doors.png")};
     const auto doors = terrain_sprites::alignDoorSheet(doorSource);
     assert(!doors.isNull());
+    for (int style = 0; style < 6; ++style) {
+        const auto closedDoor = doors.copy(style * 256, 0, 256, 256);
+        const auto openDoor = doors.copy(style * 256, 256, 256, 256);
+        int retained = 0, removed = 0;
+        for (int y = 0; y < 256; ++y)
+            for (int x = 0; x < 256; ++x) {
+                const auto original = closedDoor.pixel(x, y);
+                const auto opened = openDoor.pixel(x, y);
+                assert(qAlpha(opened) == 0 || opened == original);
+                retained += qAlpha(opened) > 128;
+                removed += qAlpha(original) > 128 && qAlpha(opened) == 0;
+                if (x >= 112 && x < 144)
+                    assert(qAlpha(opened) == 0); // Clear opening, no swung leaf.
+            }
+        assert(retained > 100 && removed > 100);
+        assert(doors.copy(style * 256, 512, 256, 256) == closedDoor);
+        assert(doors.copy(style * 256, 768, 256, 256) == openDoor);
+    }
     terrain_sprites::SpritePacks doorPacks;
     assert(terrain_sprites::appendFixedSheet(doorPacks, doors) == 0);
     const QImage danger{QStringLiteral(TERRAIN_ASSET_DIR "/terrain-death-trap.png")};
@@ -222,6 +240,7 @@ int main(int argc, char **argv)
     assert(rotation(0) == 0 && rotation(1) == 2 && rotation(2) == 3 && rotation(3) == 1);
     // 44 regional tree packs + fallback and all shared families fit the existing
     // portable 256-layer minimum; only the first shared tile is packed in eleven bits.
-    static_assert(90 + terrain_materials::SHEETS.size() * terrain_materials::LAYERS_PER_SHEET <= 256);
+    static_assert(90 + terrain_materials::SHEETS.size() * terrain_materials::LAYERS_PER_SHEET
+                  <= 256);
     static_assert(90 * 16 < 2048);
 }

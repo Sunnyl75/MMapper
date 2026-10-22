@@ -33,6 +33,7 @@
 #include "RoadIndex.h"
 #include "TerrainDoors.h"
 #include "TerrainEdges.h"
+#include "TerrainLightingDiagnostics.h"
 #include "TerrainMaterials.h"
 #include "TerrainSprites.h"
 #include "TerrainWalls.h"
@@ -710,6 +711,7 @@ struct NODISCARD LayerBatchData final
     std::vector<TerrainSpriteVert> groundSprites;
     std::vector<TerrainSpriteVert> terrainSprites;
     std::vector<TerrainSpriteVert> terrainEdges;
+    std::vector<TerrainSpriteVert> waterFlow;
     std::vector<TerrainSpriteVert> terrainWalls;
     std::vector<TerrainSpriteVert> roofCaps;
     std::vector<TerrainSpriteVert> doorSprites;
@@ -729,6 +731,7 @@ struct NODISCARD LayerBatchData final
     ColoredRoomTexVector roomUpDownExits;
     RoomTexVector streamIns;
     RoomTexVector streamOuts;
+    RoomTexVector organicLegacyStreams;
     RoomTintArray<RoomTintVector> roomTints;
     RoomTintVector roomLayerBoostQuads;
 
@@ -775,8 +778,10 @@ struct NODISCARD LayerBatchData final
                                 && (a.textureColor.w & terrain_edges::ROAD_SHORE) != 0;
             const bool bShore = (b.textureColor.w & 15) == terrain_edges::BANK
                                 && (b.textureColor.w & terrain_edges::ROAD_SHORE) != 0;
-            const int aOrder = aWater ? 0 : aShore ? 1 : 2;
-            const int bOrder = bWater ? 0 : bShore ? 1 : 2;
+            const bool aRapids = aWater && (a.textureColor.w & terrain_materials::RAPIDS_OVERLAY);
+            const bool bRapids = bWater && (b.textureColor.w & terrain_materials::RAPIDS_OVERLAY);
+            const int aOrder = aWater ? (aRapids ? 1 : 0) : aShore ? 2 : 3;
+            const int bOrder = bWater ? (bRapids ? 1 : 0) : bShore ? 2 : 3;
             if (aOrder != bOrder)
                 return aOrder < bOrder;
             return std::tie(a.textureColor.z, a.anchorSizeLayer.y, a.anchorSizeLayer.x)
@@ -799,6 +804,11 @@ struct NODISCARD LayerBatchData final
         }
         meshes.trails = ::createSortedTexturedMeshes("trails", roomTrails);
         meshes.legacyTrails = ::createSortedTexturedMeshes("legacyTrails", legacyTrails);
+        if (!waterFlow.empty()) {
+            meshes.waterFlow = [v = waterFlow, texture = spriteTexture](OpenGL &gl) {
+                return gl.createTerrainSpriteBatch(v, texture);
+            };
+        }
         if (!terrainEdges.empty()) {
             meshes.terrainEdges = [v = terrainEdges, texture = spriteTexture](OpenGL &gl) {
                 return gl.createTerrainSpriteBatch(v, texture);
@@ -844,6 +854,8 @@ struct NODISCARD LayerBatchData final
         meshes.upDownExits = ::createSortedColoredTexturedMeshes("upDownExits", roomUpDownExits);
         meshes.streamIns = ::createSortedTexturedMeshes("streamIns", streamIns);
         meshes.streamOuts = ::createSortedTexturedMeshes("streamOuts", streamOuts);
+        meshes.organicLegacyStreams = ::createSortedTexturedMeshes("organicLegacyStreams",
+                                                                   organicLegacyStreams);
         meshes.layerBoost = ::createMeshFn("layerBoost", roomLayerBoostQuads, white_pixel);
         meshes.isValid = true;
         return meshes;
@@ -867,6 +879,7 @@ private:
     std::unordered_map<Coordinate, uint32_t> m_wallMasks;
     std::unordered_map<Coordinate, uint32_t> m_buildingWalls;
     std::unordered_map<Coordinate, const RoomHandle *> m_roomHandles;
+    std::set<uint64_t> m_seenWaterFlows;
 
     NODISCARD std::optional<terrain_materials::Family> wallFamily(const RoomTerrainEnum terrain,
                                                                   const Coordinate &pos,
@@ -1039,8 +1052,10 @@ private:
                     | static_cast<int>(terrain_walls::rotation(side) << 4u);
         if (paired && (side == 1u || side == 3u))
             flags |= terrain_materials::DOOR_OTHER_SIDE;
-        // Closed artwork is purely decorative. Both room-owned halves use
-        // the same saved-room variant, independent of live GMCP door states.
+        if (paired)
+            flags |= terrain_materials::DOOR_PAIRED;
+        // Stable geometry and saved-room artwork variation. A small uniform
+        // selects jambs-only frames for the currently observed open doors.
         door.textureColor = {tex.position * 16 + static_cast<int>(variant), 0, 0, flags};
         m_data.spriteTexture = tex.array;
         m_data.doorSprites.emplace_back(door);
@@ -1366,6 +1381,20 @@ private:
                             tint);
                         m_data.groundSprites.back().textureColor.z = static_cast<int>(
                             sprite.transition | ((waterMask & allowed) << 16u) | (walls << 24u));
+                    }
+                    if (room.getTerrainType() == RoomTerrainEnum::RAPIDS
+                        && m_textures.terrainWallPacks.at(static_cast<std::size_t>(F::RAPIDS))) {
+                        for (auto sprite : terrain_sprites::water(id ^ 0x52415049u)) {
+                            sprite.variant = terrain_sprites::mix(id ^ sprite.transition) % 24u;
+                            add(m_data.groundSprites,
+                                sprite,
+                                atlas(F::RAPIDS),
+                                terrain_materials::WATER_PATCH_KIND | terrain_materials::ALL_SEASON
+                                    | terrain_materials::RAPIDS_OVERLAY,
+                                tint);
+                            m_data.groundSprites.back().textureColor.z = static_cast<int>(
+                                sprite.transition | ((waterMask & allowed) << 16u) | (walls << 24u));
+                        }
                     }
                 } else {
                     add(m_data.organicGroundBase,
@@ -1787,18 +1816,49 @@ private:
                           const ExitDirEnum dir,
                           const StreamTypeEnum type) final
     {
-        switch (type) {
-        case StreamTypeEnum::OutFlow:
-            m_data.streamOuts.emplace_back(room.getPosition(), m_textures.stream_out[dir]);
+        const bool incoming = type == StreamTypeEnum::InFlow;
+        const auto tex = incoming ? m_textures.stream_in[dir] : m_textures.stream_out[dir];
+        auto &legacy = incoming ? m_data.streamIns : m_data.streamOuts;
+        legacy.emplace_back(room.getPosition(), tex);
+        if (!m_organicTerrain)
             return;
-        case StreamTypeEnum::InFlow:
-            m_data.streamIns.emplace_back(room.getPosition(), m_textures.stream_in[dir]);
+        const auto side = static_cast<unsigned>(dir);
+        using F = terrain_materials::Family;
+        if (side >= 4 || !m_textures.terrainWallPacks.at(static_cast<std::size_t>(F::WATER_FLOW))) {
+            m_data.organicLegacyStreams.emplace_back(room.getPosition(), tex);
             return;
-        default:
-            break;
         }
-
-        assert(false);
+        const auto id = room.getIdExternal().asUint32();
+        const uint64_t key = (static_cast<uint64_t>(id) << 4u) | (side << 1u)
+                             | static_cast<unsigned>(incoming);
+        // The native traversal can report the same outgoing flag twice.
+        if (!m_seenWaterFlows.insert(key).second)
+            return;
+        const auto art = m_textures.terrain_sprites.at(static_cast<std::size_t>(
+            terrain_materials::atlas(m_textures.terrainGroundPacks[0], F::WATER_FLOW)));
+        const auto pos = room.getPosition();
+        const auto delta = exitDir(dir);
+        TerrainSpriteVert flow;
+        flow.anchorSizeLayer = {static_cast<float>(pos.x) + 0.5f
+                                    + 0.29f * static_cast<float>(delta.x),
+                                static_cast<float>(pos.y) + 0.5f
+                                    + 0.29f * static_cast<float>(delta.y),
+                                0.40f,
+                                static_cast<float>(pos.z)};
+        const auto tint = room.getLightType() == RoomLightEnum::DARK
+                              ? getTintColor(RoomTintEnum::DARK)
+                          : room.getSundeathType() == RoomSundeathEnum::NO_SUNDEATH
+                              ? getTintColor(RoomTintEnum::NO_SUNDEATH)
+                              : NamedColorEnum::DEFAULT;
+        flow.textureColor
+            = {art.position * 16 + static_cast<int>(terrain_edges::flowVariant(id, side)),
+               static_cast<int>(tint),
+               0,
+               terrain_materials::BORDER_KIND | terrain_materials::ALL_SEASON
+                   | terrain_materials::NO_SKY_SHADOW | terrain_materials::FLOW_OVERLAY
+                   | static_cast<int>(terrain_edges::flowRotation(side, incoming) << 4u)};
+        m_data.spriteTexture = art.array;
+        m_data.waterFlow.emplace_back(flow);
     }
 };
 
@@ -1931,6 +1991,7 @@ LayerMeshes LayerMeshesIntermediate::getLayerMeshes(OpenGL &gl) const
     lm.groundSprites = r.resolve(groundSprites);
     lm.terrainSprites = r.resolve(terrainSprites);
     lm.terrainEdges = r.resolve(terrainEdges);
+    lm.waterFlow = r.resolve(waterFlow);
     lm.terrainWalls = r.resolve(terrainWalls);
     lm.roofCaps = r.resolve(roofCaps);
     lm.doorSprites = r.resolve(doorSprites);
@@ -1948,6 +2009,7 @@ LayerMeshes LayerMeshesIntermediate::getLayerMeshes(OpenGL &gl) const
     lm.upDownExits = r.resolve(upDownExits);
     lm.streamIns = r.resolve(streamIns);
     lm.streamOuts = r.resolve(streamOuts);
+    lm.organicLegacyStreams = r.resolve(organicLegacyStreams);
     lm.layerBoost = r.resolve(layerBoost);
     lm.isValid = true;
 
@@ -1959,7 +2021,8 @@ void LayerMeshes::render(const int thisLayer,
                          const bool drawTerrainSprites,
                          const glm::vec4 &shadow,
                          const float day,
-                         const GLRenderState &lighting)
+                         const GLRenderState &lighting,
+                         TerrainLightingDiagnostics *const diagnostics)
 {
     // Disable texturing for this layer. We want to draw
     // all of the squares in white (using layer boost quads),
@@ -2039,8 +2102,16 @@ void LayerMeshes::render(const int thisLayer,
         {
             const Color streamColor = XNamedColor{NamedColorEnum::STREAM}.getColor();
             const auto combined = Color::multiplyAsVec4(streamColor, color);
-            streamIns.render(lequal_blended.withColor(combined));
-            streamOuts.render(lequal_blended.withColor(combined));
+            if (organicSelected && !disableTextures) {
+                organicLegacyStreams.render(lequal_blended.withColor(combined));
+                if (waterFlow)
+                    waterFlow.render(defaultState.withBlend(BlendModeEnum::TRANSPARENCY)
+                                         .withColor(color)
+                                         .withTerrainDay(day));
+            } else {
+                streamIns.render(lequal_blended.withColor(combined));
+                streamOuts.render(lequal_blended.withColor(combined));
+            }
         }
 
         trails.render(equal_blended.withColor(color));
@@ -2082,10 +2153,14 @@ void LayerMeshes::render(const int thisLayer,
 
     // Door art is a final room-owned overlay, above legacy wall/door lines
     // and decorative roofs. Up/down doors keep their existing representation.
-    if (!disableTextures && organicSelected && doorSprites)
+    if (!disableTextures && organicSelected && doorSprites) {
+        std::optional<TerrainLightingDiagnostics::Scope> timing;
+        if (diagnostics)
+            timing.emplace(*diagnostics, TerrainLightingDiagnostics::Stage::DOOR_DRAW_SUBMIT);
         doorSprites.render(defaultState.withBlend(BlendModeEnum::TRANSPARENCY)
                                .withColor(Colors::white)
                                .withTerrainDay(day));
+    }
 
     // Safety markings must survive legacy load/mob overlays, foregrounds
     // and wall decoration. Keep this above every map-room artwork pass.

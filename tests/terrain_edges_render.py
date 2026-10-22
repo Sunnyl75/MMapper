@@ -77,7 +77,25 @@ for slot in range(24):
     if bounds: fitted.paste(frame.crop(bounds).resize((252,252),Image.Resampling.BILINEAR),(2,2))
     shore_frames.append(fitted.resize((32,32),Image.Resampling.BILINEAR).transpose(Image.Transpose.FLIP_TOP_BOTTOM))
 materials=bytearray()
-for family in range(30):
+water_frames={}
+for family,filename in [(30,'terrain-rapids-patches.png'),(31,'terrain-water-flow.png')]:
+    sheet=Image.open(root/'src/resources/pixmaps'/filename).convert('RGBA')
+    cell=sheet.width//6
+    frames=[];bounds=[]
+    for slot in range(24):
+        frame=sheet.crop((slot%6*cell,slot//6*cell,(slot%6+1)*cell,(slot//6+1)*cell))
+        bound=frame.getchannel('A').point(lambda a:255 if a>=64 else 0).getbbox()
+        assert bound is not None
+        frames.append(frame);bounds.append(bound)
+    scale=min(cell*.96/max(b[2]-b[0] for b in bounds),cell*.96/max(b[3]-b[1] for b in bounds))
+    water_frames[family]=[]
+    for frame,bound in zip(frames,bounds):
+        cropped=frame.crop(bound)
+        w=max(1,round(cropped.width*scale));h=max(1,round(cropped.height*scale))
+        fitted=Image.new('RGBA',(cell,cell))
+        fitted.paste(cropped.resize((w,h),Image.Resampling.BILINEAR),((cell-w)//2,(cell-h)//2))
+        water_frames[family].append(fitted.resize((32,32),Image.Resampling.BILINEAR).transpose(Image.Transpose.FLIP_TOP_BOTTOM))
+for family in range(32):
     for page in range(2):
         atlas=Image.new('RGBA',(128,128))
         for cell in range(16):
@@ -85,9 +103,11 @@ for family in range(30):
             season=(slot//6)%4
             rgb=(220,225,230) if season==0 else ((40+family*13)%256,95,55)
             tile=shore_frames[slot] if family==29 and slot<24 else Image.new('RGBA',(32,32),(*rgb,0 if family in [13,29] else 255))
+            if family in water_frames:
+                tile=water_frames[family][slot] if slot<24 else Image.new('RGBA',(32,32))
             atlas.paste(tile,((cell%4)*32,(cell//4)*32))
         materials.extend(atlas.tobytes())
-GL.glTexImage3D(GL.GL_TEXTURE_2D_ARRAY,0,GL.GL_RGBA8,128,128,60,0,GL.GL_RGBA,GL.GL_UNSIGNED_BYTE,bytes(materials))
+GL.glTexImage3D(GL.GL_TEXTURE_2D_ARRAY,0,GL.GL_RGBA8,128,128,64,0,GL.GL_RGBA,GL.GL_UNSIGNED_BYTE,bytes(materials))
 GL.glTexParameteri(GL.GL_TEXTURE_2D_ARRAY,GL.GL_TEXTURE_MIN_FILTER,GL.GL_NEAREST)
 GL.glTexParameteri(GL.GL_TEXTURE_2D_ARRAY,GL.GL_TEXTURE_MAG_FILTER,GL.GL_NEAREST)
 GL.glUniform1i(GL.glGetUniformLocation(program,'uTexture'),0)
@@ -103,7 +123,7 @@ GL.glViewport(0,0,256,256)
 class Instance(C.Structure):
     _fields_ = [('pos', C.c_float * 4), ('data', C.c_int * 4)]
 
-def render(kind, here=7, sides=(1,1,1,1), mask=3, seed=12345, day=180, size=1, neighbours=0, wide=False, shade=1, walls=0, shadow=False, raw=None, sky=(.2,.8), light=0.0, reuse=False, view_override=None):
+def render(kind, here=7, sides=(1,1,1,1), mask=3, seed=12345, day=180, size=1, neighbours=0, wide=False, shade=1, walls=0, shadow=False, raw=None, sky=(.2,.8), light=0.0, reuse=False, view_override=None, door_room=(0,0,0,0)):
     packed = here | sum(s << (4 * (i + 1)) for i, s in enumerate(sides))
     instance = Instance((C.c_float * 4)(.5,.5,size,0),
                         (C.c_int * 4)(packed,0,seed | neighbours << 16 | walls << 24,kind | mask << 4))
@@ -117,6 +137,7 @@ def render(kind, here=7, sides=(1,1,1,1), mask=3, seed=12345, day=180, size=1, n
     GL.glUniform4f(GL.glGetUniformLocation(program, 'uTerrainShadow'),*sky,.3 if shadow else light,1 if shadow else 0)
     GL.glUniform4f(GL.glGetUniformLocation(program, 'uColor'),shade,shade,shade,1)
     GL.glUniform1f(GL.glGetUniformLocation(program, 'uTerrainDay'), day)
+    GL.glUniform4i(GL.glGetUniformLocation(program, 'uTerrainDoorRoom'), *door_room)
     GL.glClearColor(0,0,0,0)
     GL.glClear(GL.GL_COLOR_BUFFER_BIT)
     GL.glDrawArraysInstanced(GL.GL_TRIANGLE_STRIP, 0, 4, 1)
@@ -223,6 +244,38 @@ for direction in range(4):
     sides=[7]*4
     im=render(shore_kind,here=6,sides=sides,mask=1<<direction,neighbours=255)
     check(im.getpixel((128,128))[3]==0)
+
+# Direction markers are authored wave crests, not the legacy blue chevrons.
+# Incoming and outgoing at the same side must face opposite ways. Rendering
+# actual atlas artwork through the production shader verifies each rotation.
+flow_kind=10 | 4096 | 8192 | 262144
+for variant in range(24):
+    north=render(0,size=.4,raw=(31*32+variant,0,0,flow_kind))
+    check(alpha(north).getbbox() is not None)
+    check(alpha(north).getextrema()[0]==0)
+    for rotation,transpose in [(1,Image.Transpose.ROTATE_270),
+                               (2,Image.Transpose.ROTATE_180),
+                               (3,Image.Transpose.ROTATE_90)]:
+        turned=render(0,size=.4,raw=(31*32+variant,0,0,flow_kind | rotation<<4))
+        check(turned.tobytes()==north.transpose(transpose).tobytes())
+    check(north.tobytes()!=north.transpose(Image.Transpose.ROTATE_180).tobytes())
+# Rapids are separate foam patches with transparent gaps and remain fixed
+# through seasons, while the ordinary water underpaint remains seasonal.
+for variant in range(24):
+    raw=(30*32+variant,0,255<<16,11 | 4096 | 524288)
+    foam=render(0,raw=raw,day=0)
+    check(alpha(foam).getbbox() is not None)
+    check(alpha(foam).getextrema()[0]==0)
+    check(foam.tobytes()==render(0,raw=raw,day=180).tobytes())
+# Water/rapids share the existing neighbour mask. Foam may overlap mapped water,
+# but cannot cross excluded neighbours or bypass walls.
+for side,box in [(0,(86,171,170,256)),(1,(86,0,170,85)),
+                 (2,(171,86,256,170)),(3,(0,86,85,170))]:
+    raw=(30*32+3,0,(255 ^ (1<<side))<<16,11 | 4096 | 524288)
+    foam=render(0,raw=raw,size=1.6,wide=True)
+    check(alpha(foam).crop(box).getbbox() is None)
+    raw=(30*32+3,0,(255<<16) | (1<<(24+side)),11 | 4096 | 524288)
+    check(alpha(render(0,raw=raw,size=1.6,wide=True)).crop(box).getbbox() is None)
 
 # Water undercoat always fills its room; patch shapes supply the visible variety.
 check(alpha(render(9,here=6,mask=0)).getextrema() == (255,255))
@@ -618,6 +671,42 @@ if len(sys.argv) > 3:
     check(danger.getchannel('A').getextrema()[1] > 240)
     check(sum(a>200 for a in danger.getchannel('A').tobytes()) > 10000)
     check(danger.tobytes() == render(danger_flags,raw=(0,0,0,danger_flags),day=180).tobytes())
+# An asymmetric relief profile catches rotated or mirrored hill shadows.
+# The taller peak is on the left in the artwork and must stay there when
+# backlit. The shallow footprint must also survive exactly E/W illumination.
+relief = bytearray()
+for page in range(2):
+    for y in range(512):
+        v=(y%128+.5)/128
+        for x in range(512):
+            u=(x%128+.5)/128
+            roof=max(.88-2.2*abs(u-.30),.53-1.2*abs(u-.72))
+            relief.extend((150,145,80,255 if .08<u<.92 and .08<v<roof else 0))
+GL.glTexImage3D(GL.GL_TEXTURE_2D_ARRAY,0,GL.GL_RGBA8,512,512,2,0,GL.GL_RGBA,GL.GL_UNSIGNED_BYTE,bytes(relief))
+GL.glTexParameteri(GL.GL_TEXTURE_2D_ARRAY,GL.GL_TEXTURE_MAX_LEVEL,0)
+GL.glTexParameteri(GL.GL_TEXTURE_2D_ARRAY,GL.GL_TEXTURE_MIN_FILTER,GL.GL_LINEAR)
+GL.glTexParameteri(GL.GL_TEXTURE_2D_ARRAY,GL.GL_TEXTURE_MAG_FILTER,GL.GL_LINEAR)
+for height_flag in [0,65536]:
+    flags=8|16384|4096|height_flag
+    raw=(0,0,0,flags)
+    south=alpha(render(flags,raw=raw,shadow=True,sky=(0,-1),wide=True))
+    left=south.crop((106,0,118,128)).getbbox()
+    right=south.crop((143,0,154,128)).getbbox()
+    check(left is not None and right is not None)
+    check(left[1]+5 < right[1])
+    # Contact shade remains exposed below the illustrated front, even when
+    # the sun is high and the long projected silhouette mostly hides below it.
+    short=alpha(render(flags,raw=raw,shadow=True,sky=(0,-.12),wide=True))
+    face=alpha(render(flags,raw=raw,sky=(0,-.12),light=.26,wide=True))
+    check(sum(a>8 and b==0 for a,b in zip(short.tobytes(),face.tobytes())) > 100)
+    for direction in [(1,0),(-1,0),(1,-.00001),(-1,.00001)]:
+        side=alpha(render(flags,raw=raw,shadow=True,sky=direction,wide=True))
+        bounds=side.getbbox()
+        check(bounds is not None and bounds[3]-bounds[1] <= 30)
+        check(sum(a>8 for a in side.tobytes()) > 100)
+    excluded=(0,0,0,flags|8192)
+    check(alpha(render(flags,raw=excluded,shadow=True,sky=(0,-1),wide=True)).getbbox() is None)
+
 # An alpha silhouette with a sharp authored edge receives a feather in the
 # existing tree shadow pass; nearby fully covered pixels retain their opacity.
 half = bytearray()
@@ -690,7 +779,8 @@ if len(sys.argv) > 3:
     GL.glTexImage3D(GL.GL_TEXTURE_2D_ARRAY,0,GL.GL_RGBA8,512,512,2,0,GL.GL_RGBA,
                     GL.GL_UNSIGNED_BYTE,b''.join(page.tobytes() for page in door_pages))
     review = Image.new('RGBA',(1536,320),(110,105,95,255))
-    check(GL.glGetUniformLocation(program,'uTerrainDoors') == -1)
+    check(GL.glGetUniformLocation(program,'uTerrainDoorRoom') >= 0)
+    opened_review = Image.new('RGBA',(1536,320),(110,105,95,255))
     for variant in range(6):
         flags = 12 | 4096 | 8192 | 256
         first = render(flags,raw=(variant,0,0,flags),mask=0)
@@ -716,7 +806,51 @@ if len(sys.argv) > 3:
             check(own.tobytes() == render(style,mask=0,reuse=True).tobytes())
         single=render(flags,raw=(variant,0,0,flags),mask=0)
         check(single.tobytes() == first.tobytes())
+        for side,turn in enumerate([0,2,3,1]):
+            style = flags | (turn << 4)
+            data = (variant,0,0,style)
+            closed = render(style,raw=data,mask=0)
+            opened = render(style,raw=data,mask=0,door_room=(0,0,0,1<<side))
+            check(opened.tobytes() != closed.tobytes())
+            check(sum(a>128 for a in alpha(opened).tobytes()) > 50)
+            check(sum(a>128 for a in alpha(opened).tobytes())
+                  < sum(a>128 for a in alpha(closed).tobytes()))
+            check(render(style,raw=data,mask=0,door_room=(0,0,0,1<<(side^1))).tobytes()
+                  == closed.tobytes())
+            check(render(style,raw=data,mask=0,door_room=(0,0,1,1<<side)).tobytes()
+                  == closed.tobytes())
+            dx,dy = [(0,1),(0,-1),(1,0),(-1,0)][side]
+            # A neighboring observation propagates ONLY to a saved reciprocal
+            # pair, never to a one-way door or a different elevation.
+            remote = (dx,dy,0,1<<(side^1))
+            check(render(style,raw=data,mask=0,door_room=remote).tobytes() == closed.tobytes())
+            paired_style = style | 1024
+            paired_data = (variant,0,0,paired_style)
+            check(render(paired_style,raw=paired_data,mask=0,door_room=remote).tobytes()
+                  == opened.tobytes())
+            # Changing only a uniform works with the same GPU instance buffer.
+            check(render(paired_style,mask=0,reuse=True,door_room=(0,0,0,1<<side)).tobytes()
+                  == opened.tobytes())
+        open_first = render(flags,raw=(variant,0,0,flags),mask=0,door_room=(0,0,0,1))
+        open_second = render(other_flags | 1024,raw=(variant,0,0,other_flags | 1024),
+                             mask=0,door_room=(0,-1,0,1))
+        # The same posts remain on both sides. Downsampling may feather their
+        # new inner edges, but cannot add opacity or recolour opaque interiors.
+        for x in range(256):
+            for opened_half,closed_half,y in [(open_first,first,255),(open_second,second,0)]:
+                pixel = opened_half.getpixel((x,y))
+                original = closed_half.getpixel((x,y))
+                check(pixel[3] <= original[3]+1)
+                if pixel[3] >= 250 and original[3] >= 250:
+                    check(max(abs(pixel[c]-original[c]) for c in range(3)) <= 1)
+        check(open_first.getpixel((128,255))[3] == 0)
+        check(open_second.getpixel((128,0))[3] == 0)
+        pair_open = Image.new('RGBA',(256,512),(110,105,95,255))
+        pair_open.alpha_composite(open_second.transpose(Image.Transpose.FLIP_TOP_BOTTOM),(0,0))
+        pair_open.alpha_composite(open_first.transpose(Image.Transpose.FLIP_TOP_BOTTOM),(0,256))
+        opened_review.alpha_composite(pair_open.crop((0,128,256,448)),(variant*256,0))
     review.save(atlas_dir.parent / ('doors-shader-review-' + api + '.png'))
+    opened_review.save(atlas_dir.parent / ('open-doors-shader-review-' + api + '.png'))
     examples.append(first)
 print('PASS', checks, 'render assertions')
 EGL.eglMakeCurrent(display,EGL.EGL_NO_SURFACE,EGL.EGL_NO_SURFACE,EGL.EGL_NO_CONTEXT)

@@ -376,6 +376,35 @@ float treeShadowAlpha(int tile, vec2 at) {
     alpha += sampleTile(tile,at-vec2(radius,radius)).a*0.15;
     return alpha;
 }
+float reliefShadowAlpha(int tile, vec2 ground, vec2 groundDx, vec2 groundDy) {
+    vec2 projection = uTerrainShadow.xy * ((vWallStyle & 65536) != 0 ? 0.55 : 1.0);
+    float first = 0.0, last = 0.94;
+    float firstSlope = 0.0, lastSlope = 0.0;
+    // Integrate the authored silhouette over a shallow footprint. This keeps
+    // twin peaks on their original sides, includes a contact shadow south of
+    // the foot, and remains a finite area with exactly east/west illumination.
+    if (abs(projection.y) > 0.0001) {
+        vec2 heights = (ground.y+vec2(-0.16,0.16))/projection.y;
+        float lo = min(heights.x,heights.y), hi = max(heights.x,heights.y);
+        if (lo > first) { first = lo; firstSlope = 1.0/projection.y; }
+        if (hi < last) { last = hi; lastSlope = 1.0/projection.y; }
+    } else if (abs(ground.y) >= 0.16) return 0.0;
+    if (first > last) return 0.0;
+    float alpha = 0.0;
+    // Five bounded lookups, matching the tree shadow's existing sample budget.
+    for (int i = 0; i < 5; ++i) {
+        float height = mix(first,last,float(i)*0.25);
+        vec2 foot = ground-projection*height;
+        vec2 source = vec2(foot.x+0.5,height+0.06);
+        if (source.x < 0.0 || source.x > 1.0) continue;
+        float edge = 1.0-smoothstep(0.60,1.0,length(foot/vec2(0.48,0.16)));
+        float slope = mix(firstSlope,lastSlope,float(i)*0.25);
+        vec2 dx = vec2(groundDx.x-projection.x*slope*groundDx.y,slope*groundDx.y);
+        vec2 dy = vec2(groundDy.x-projection.x*slope*groundDy.y,slope*groundDy.y);
+        alpha = max(alpha,sampleTileGrad(tile,source,dx*2.0,dy*2.0).a*edge);
+    }
+    return alpha;
+}
 vec4 litTerrainColor()
 {
     float light = roomIllumination(vec3(vWorldUV,vRoomLayer)).a;
@@ -396,6 +425,14 @@ void shadeTerrain()
         vFragmentColor = vec4(0.15, 0.13, 0.10, wallGrime(vTreeUV) * uColor.a);
         return;
     }
+    if (vKind == 10 && (vWallStyle & 262144) != 0) {
+        vec4 ripple = sampleTileGrad(vTiles.x,vTreeUV,textureDx,textureDy);
+        // Retain the bright thin crests while letting the underlying water
+        // show through the artist's blue-grey wash between those crests.
+        ripple.a *= smoothstep(0.50,0.70,dot(ripple.rgb,vec3(0.299,0.587,0.114)));
+        vFragmentColor = ripple*litTerrainColor()*uColor;
+        return;
+    }
     if (vKind == 15) {
         vFragmentColor = repeatMaterial(vTiles.x/16, vWorldUV) * litTerrainColor() * uColor;
         return;
@@ -411,6 +448,15 @@ void shadeTerrain()
             || ((vWallMask & 2) != 0 && local.y < 0.0)
             || ((vWallMask & 4) != 0 && local.x > 1.0)
             || ((vWallMask & 8) != 0 && local.x < 0.0)) discard;
+    }
+    if (uTerrainShadow.w > 0.5 && castsShadow && vKind == 8
+        && (vWallStyle & 32768) == 0) {
+        float alpha = reliefShadowAlpha(vTiles.x,vTreeUV,textureDx,textureDy);
+        if (vSeasonMix > 0.0)
+            alpha = mix(alpha,reliefShadowAlpha(vTiles.y,vTreeUV,textureDx,textureDy),vSeasonMix);
+        vFragmentColor = vec4(0.025,0.035,0.05,
+            alpha*uTerrainShadow.z*litTerrainColor().a*uColor.a);
+        return;
     }
     if (vKind == 4 && (vWallStyle & 32768) != 0) {
         int mask = vSurface.z & 15;

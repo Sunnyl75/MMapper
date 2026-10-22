@@ -13,9 +13,11 @@ for frame in range(FRAMES):
         for x in range(SIZE):
             u, v = (x + .5) / 16 - 1, (y + .5) / 16 - 1
             angle = atan2(v, u)
-            radius = .79 + .035*sin(phase) + .018*sin(3*phase+.4)
+            radius = .86 + .035*sin(phase) + .018*sin(3*phase+.4)
             radius += .018*sin(3*angle+phase) + .012*sin(5*angle-2*phase)
-            t = min(1, max(0, (hypot(u, v) - .22) / (radius - .22)))
+            # Retain useful illumination beyond the room edge (radius .5),
+            # rather than spending almost the entire halo on near-zero alpha.
+            t = min(1, max(0, (hypot(u, v) - .34) / (radius - .34)))
             falloff = 1 - t*t*(3-2*t)
             pulse = .84 + .10*sin(phase) + .04*sin(3*phase+.4)
             level = round(255 * falloff * pulse)

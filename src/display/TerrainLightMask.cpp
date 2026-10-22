@@ -56,13 +56,15 @@ QImage MaskAtlas::tile(const uint32_t seed,
             const bool border = x == 0 || y == 0 || x == HALO_PIXELS - 1 || y == HALO_PIXELS - 1;
             const double mask = border ? 0.0 : ps[offset] * (1.0 - amount) + animated * amount;
             out[offset] = 255;
-            out[offset + 1] = static_cast<uchar>(168 + bytes[1] / 10);
+            // Keep one warm hue. Independent brightness, radius and phase
+            // still vary, without a colour seam when two pools exchange dominance.
+            out[offset + 1] = 184;
             // Blue stores a cached corner-shadow opacity, not a colour channel.
-            // Corner shadow belongs to the source room, not the exterior halo.
-            // The animated atlas varies here as well as along the free outer rim.
-            const bool inside = x >= HALO_OFFSET && x < HALO_OFFSET + PIXELS && y >= HALO_OFFSET
-                                && y < HALO_OFFSET + PIXELS;
-            const double shade = inside ? 1.0 - mask / 255.0 : 0.0;
+            // This potential is continuous across room edges. The cached clip
+            // restricts it to actual walls, including walls reached by the halo.
+            // Fade the potential away with the light itself: a lamp must not
+            // paint a dark ring beyond the reach of its illumination.
+            const double shade = (1.0 - mask / 255.0) * std::clamp(mask / 32.0, 0.0, 1.0);
             out[offset + 2] = static_cast<uchar>(shade * 70.0 * std::clamp(strength, 0, 100)
                                                  / 100.0);
             out[offset + 3] = static_cast<uchar>(std::clamp(mask * brightness, 0.0, 255.0));
@@ -136,22 +138,40 @@ MaskAtlas::Clip MaskAtlas::clip(const WallNeighborhood &neighbours)
 {
     Clip result{};
     for (int y = 0; y < HALO_PIXELS; ++y)
-        for (int x = 0; x < HALO_PIXELS; ++x)
-            if (reachable(neighbours,
-                          (static_cast<double>(x - HALO_OFFSET) + 0.5) / PIXELS,
-                          (static_cast<double>(y - HALO_OFFSET) + 0.5) / PIXELS))
-                result[static_cast<size_t>(y)] |= uint32_t{1} << x;
+        for (int x = 0; x < HALO_PIXELS; ++x) {
+            const double px = (static_cast<double>(x - HALO_OFFSET) + 0.5) / PIXELS;
+            const double py = (static_cast<double>(y - HALO_OFFSET) + 0.5) / PIXELS;
+            if (!reachable(neighbours, px, py))
+                continue;
+            const auto row = static_cast<size_t>(y), column = static_cast<size_t>(x);
+            result.reachable[row] |= uint32_t{1} << x;
+            const int roomX = static_cast<int>(std::floor(px));
+            const int roomY = static_cast<int>(std::floor(py));
+            const double fx = px - std::floor(px), fy = py - std::floor(py);
+            const std::array<double, 4> distances{1.0 - fy, fy, 1.0 - fx, fx};
+            double nearest = 1.0;
+            for (int dir = 0; dir < 4; ++dir)
+                if (blocked(neighbours, roomX, roomY, dir))
+                    nearest = std::min(nearest, distances[static_cast<size_t>(dir)]);
+            const double t = std::clamp(nearest / 0.25, 0.0, 1.0);
+            result.wallShade[row][column] = static_cast<uint8_t>(255.0
+                                                                 * (1.0 - t * t * (3.0 - 2.0 * t)));
+        }
     return result;
 }
 void MaskAtlas::applyClip(QImage &tile, const Clip &clip)
 {
     for (int y = 0; y < HALO_PIXELS; ++y) {
         auto *out = tile.scanLine(y);
-        for (int x = 0; x < HALO_PIXELS; ++x)
-            if ((clip[static_cast<size_t>(y)] & (uint32_t{1} << x)) == 0) {
+        for (int x = 0; x < HALO_PIXELS; ++x) {
+            if ((clip.reachable[static_cast<size_t>(y)] & (uint32_t{1} << x)) == 0) {
                 out[x * 4 + 2] = 0;
                 out[x * 4 + 3] = 0;
-            }
+            } else
+                out[x * 4 + 2] = static_cast<uchar>(
+                    static_cast<unsigned>(out[x * 4 + 2])
+                    * clip.wallShade[static_cast<size_t>(y)][static_cast<size_t>(x)] / 255u);
+        }
     }
 }
 void MaskAtlas::composite(QImage &image, const QImage &tile, const int x, const int y)
@@ -161,14 +181,15 @@ void MaskAtlas::composite(QImage &image, const QImage &tile, const int x, const 
         auto *dest = image.scanLine(y + sy);
         for (int sx = std::max(0, -x); sx < std::min(tile.width(), image.width() - x); ++sx) {
             const int a = sx * 4, b = (x + sx) * 4;
-            if (source[a + 3] > dest[b + 3]) {
-                for (int c = 0; c < 4; ++c)
-                    dest[b + c] = source[a + c];
-            } else if (source[a + 3] == dest[b + 3]) {
-                dest[b + 1] = std::max(dest[b + 1], source[a + 1]);
-                dest[b + 2] = source[a + 3] == 0 ? std::max(dest[b + 2], source[a + 2])
-                                                 : std::min(dest[b + 2], source[a + 2]);
-            }
+            if (source[a + 3] == 0 && source[a + 2] == 0)
+                continue;
+            dest[b] = 255;
+            dest[b + 1] = 184;
+            // Independent maxima are continuous, order-independent and bounded.
+            // Copying the brightest source's entire pixel also copied its corner
+            // shadow, causing a hard handover as nearby lights flickered.
+            dest[b + 2] = std::max(dest[b + 2], source[a + 2]);
+            dest[b + 3] = std::max(dest[b + 3], source[a + 3]);
         }
     }
 }

@@ -1,5 +1,9 @@
 # Static decorative doors
 
+Current extension: `terrain-live-doors.md` adds server-observed open/closed
+appearance without restoring forced terrain rebuilds. The notes below describe
+the earlier static-only checkpoint and its original performance rationale.
+
 Live door opening/closing has been removed. Door artwork always uses the closed
 frame, retaining saved-room seeded variants, matching paired halves, one-way halves
 and the final overlay order above wall/eave decoration. This is a decorative marker,

@@ -56,6 +56,14 @@ int main()
     assert(roadShoreMask(Neighbours{}, 0) == 0u);
     assert((flags(BANK, 9) | ROAD_SHORE) % 16 == BANK);
     assert(BANK != ROAD && ROAD != TRAIL && TRAIL != ROAD_BASE);
+    for (unsigned side = 0; side < 4; ++side) {
+        assert((flowRotation(side, false) + 2u) % 4u == flowRotation(side, true));
+        assert(flowVariant(12345u, side) == flowVariant(12345u, side));
+        assert(flowVariant(12345u, side) < 24u);
+    }
+    // North enters southward; east leaves eastward (clockwise quarter turn).
+    static_assert(flowRotation(0, true) == 2u);
+    static_assert(flowRotation(2, false) == 3u);
     assert(seed(0) == seed(0));
     assert(seed(std::numeric_limits<uint32_t>::max()) <= 65535u);
     bool varied = false;

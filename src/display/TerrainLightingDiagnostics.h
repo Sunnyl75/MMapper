@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <optional>
 
+#include <QStringList>
+
 // Opt-in, main-thread CPU wall timings. Never synchronizes with the GPU.
 class TerrainLightingDiagnostics final
 {
@@ -29,9 +31,17 @@ public:
         REQUEST_TO_ATTEMPT,
         REQUEST_TO_START,
         MATCHED_GMCP_TO_SUBMIT,
+        DOOR_ROOM_INFO,
+        DOOR_EXIT_UPDATE,
+        DOOR_OTHER,
+        DOOR_SELECT,
+        DOOR_DRAW_SUBMIT,
+        DOOR_REQUEST_TO_START,
+        DOOR_REQUEST_TO_SUBMIT,
+        MATCHED_GMCP_TO_DRAW_SUBMIT,
         COUNT
     };
-    enum class Cause : size_t { MOVEMENT, FLICKER, OBSERVATION, SETTINGS, COUNT };
+    enum class Cause : size_t { MOVEMENT, FLICKER, OBSERVATION, SETTINGS, DOOR, COUNT };
     using Clock = std::chrono::steady_clock;
     class Scope final
     {
@@ -64,8 +74,38 @@ private:
         uint64_t requests = 0;
         uint64_t rejected = 0;
         double flickerAge = -1.0;
+        double doorCpuMs = 0.0;
     };
-    const bool m_enabled;
+    struct RoomContext final
+    {
+        uint32_t mapRoom = 0;
+        unsigned horizontal = 0;
+        unsigned vertical = 0;
+    };
+    struct RoomSamples final
+    {
+        Sample movement;
+        Sample observer;
+        Sample selection;
+        Sample draw;
+    };
+    std::optional<RoomContext> m_roomContext;
+    std::array<RoomSamples, 7> m_roomSamples{};
+    std::array<RoomSamples, 7> m_displayRoomSamples{};
+    bool m_liveDoorsEnabled = true;
+    double m_frameDoorSelectMs = 0.0;
+    double m_frameDoorDrawMs = 0.0;
+    double m_lastArrivalDoorMs = -1.0;
+    bool m_frameSubmitted = false;
+    const bool m_logEnabled;
+    bool m_displayEnabled = false;
+    std::array<Sample, static_cast<size_t>(Stage::COUNT)> m_displaySamples{};
+    uint64_t m_displayDoorRequests = 0;
+    std::optional<Clock::time_point> m_pendingDoorRequest;
+    std::optional<Clock::time_point> m_frameDoorRequest;
+    double m_lastDoorWaitMs = -1.0;
+    double m_lastDoorSubmitMs = -1.0;
+    double m_lastMovementSubmitMs = -1.0;
     std::optional<MovementTrace> m_pendingTrace;
     std::optional<MovementTrace> m_activeTrace;
     std::optional<Clock::time_point> m_lastFlicker;
@@ -92,6 +132,7 @@ private:
 
     void record(Stage stage, Clock::time_point start);
     void record(Stage stage, Clock::time_point start, Clock::time_point end);
+    static void add(Sample &sample, double ms);
     void startFrame(Clock::time_point now);
     void reportMovement(Clock::time_point end);
     void finishFrame();
@@ -99,10 +140,18 @@ private:
 
 public:
     TerrainLightingDiagnostics();
+    bool enabled() const { return m_logEnabled || m_displayEnabled; }
+    void setDisplayEnabled(bool displayEnabled);
+    void setLiveDoorsEnabled(bool liveDoorsEnabled);
+    void roomContext(uint32_t savedRoomId, unsigned horizontalDoors, unsigned verticalDoors);
+    void clearRoomContext() { m_roomContext.reset(); }
+    QStringList performanceLines(bool liveDoorsEnabled) const;
     Scope measure(Stage stage) { return Scope{*this, stage}; }
-    void settings(bool enabled, int strength, int flicker, bool blockingPerfDisplay, int maximumFps);
+    void settings(
+        bool lightingEnabled, int strength, int flicker, bool blockingPerfDisplay, int maximumFps);
     void redrawRequested(Cause cause);
     void paintAttempt(bool accepted);
+    void drawSubmitted(); // Before the performance display's existing glFinish().
     void movement();
     void recenter();
     void active();
