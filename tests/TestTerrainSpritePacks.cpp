@@ -54,6 +54,11 @@ int main()
         }
     require(terrain_sprites::alignSeasonalSheet(offset, terrain_materials::Placement::MATERIAL)
             == offset);
+    // Faint water wash is part of the silhouette, not an alignment gutter.
+    auto wash = offset;
+    wash.setPixelColor(1, 1, QColor{30, 100, 140, 24});
+    require(terrain_sprites::alignSeasonalSheet(wash, terrain_materials::Placement::SOFT_PATCH)
+            == wash);
     const auto wall = terrain_sprites::alignSeasonalSheet(offset,
                                                           terrain_materials::Placement::WALL);
     require(!wall.isNull());
@@ -148,7 +153,7 @@ int main()
         zones.insert(QString::number(i), "local");
     write(dir.filePath("packs.json"), QJsonDocument(QJsonObject{{"superzones", zones}}).toJson());
     auto many = terrain_sprites::loadSpritePacks(dir.filePath("packs.json"), bundled);
-    require(many.areas.size() == 44 && many.atlases.size() == 4);
+    require(many.areas.size() == 45 && many.atlases.size() == 4); // Aliases share one pack.
     auto expanded = small;
     const int ground = terrain_sprites::appendSeasonalSheet(expanded, bundled);
     require(ground == 2 && expanded.atlases.size() == 4);

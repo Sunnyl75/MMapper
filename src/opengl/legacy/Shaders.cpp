@@ -28,6 +28,14 @@ NODISCARD static ShaderUtils::Source readWholeShader(const std::string &dir, con
         && (dir == "terrain" || dir == "room/tex/acolor" || dir == "weather/timeofday")) {
         source = readWholeResourceFile(":/shaders/legacy/room-lighting.glsl") + "\n" + source;
     }
+    if (dir == "terrain" && name == "frag.glsl") {
+        const std::string marker = "// TERRAIN_REFLECTION_FUNCTIONS";
+        const auto at = source.find(marker);
+        if (at != std::string::npos)
+            source.replace(at,
+                           marker.size(),
+                           readWholeResourceFile(":/shaders/legacy/terrain/reflections.glsl"));
+    }
     return ShaderUtils::Source{fullPathName, std::move(source)};
 }
 

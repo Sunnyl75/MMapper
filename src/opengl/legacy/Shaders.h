@@ -125,6 +125,13 @@ private:
         setUniform1fv(getUniformLocation("uTerrainDay"), 1, &uniforms.terrainDay);
         setUniform4iv(getUniformLocation("uTerrainDoorRoom"), 1, &uniforms.terrainDoorRoom.x);
         setUniform4fv(getUniformLocation("uSkyTint"), 1, &uniforms.skyTint.x);
+        setUniform4iv(getUniformLocation("uReflectionAtlas"), 1, &uniforms.terrainReflectionAtlas.x);
+        setUniform4iv(getUniformLocation("uReflectionMaterials"),
+                      1,
+                      &uniforms.terrainReflectionMaterials.x);
+        setUniform4fv(getUniformLocation("uReflectionLight"), 1, &uniforms.terrainReflectionLight.x);
+        setUniform4fv(getUniformLocation("uReflectionColor"), 1, &uniforms.terrainReflectionColor.x);
+        setUniform4fv(getUniformLocation("uMoonTint"), 1, &uniforms.terrainMoonTint.x);
     }
 };
 

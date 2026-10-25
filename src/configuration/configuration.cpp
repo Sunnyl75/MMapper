@@ -305,6 +305,8 @@ ConstString KEY_ORGANIC_TERRAIN = "Organic terrain";
 ConstString KEY_ROOM_ILLUMINATION = "Room illumination";
 ConstString KEY_ROOM_LIGHT_STRENGTH = "Room light strength";
 ConstString KEY_ROOM_LIGHT_FLICKER = "Room light flicker";
+ConstString KEY_TERRAIN_REFLECTIONS = "Terrain reflections";
+ConstString KEY_TERRAIN_REFLECTION_STRENGTH = "Terrain reflection strength";
 ConstString KEY_SEASONAL_TERRAIN = "Seasonal terrain";
 ConstString KEY_USE_TRILINEAR_FILTERING = "Use trilinear filtering";
 ConstString KEY_WEATHER_ATMOSPHERE_INTENSITY = "weather.atmosphereIntensity";
@@ -714,6 +716,9 @@ void Configuration::CanvasSettings::read(const QSettings &conf)
     roomLightFlicker.set(conf.value(KEY_ROOM_LIGHT_FLICKER, 35).toInt());
     roomLightStrength.clamp(0, 100);
     roomLightFlicker.clamp(0, 100);
+    terrainReflections.set(std::clamp(conf.value(KEY_TERRAIN_REFLECTIONS, 1).toInt(), 0, 2));
+    terrainReflectionStrength.set(
+        std::clamp(conf.value(KEY_TERRAIN_REFLECTION_STRENGTH, 100).toInt(), 0, 200));
     seasonalTerrain.set(conf.value(KEY_SEASONAL_TERRAIN, true).toBool());
     advanced.use3D.set(conf.value(KEY_3D_CANVAS, false).toBool());
     advanced.autoTilt.set(conf.value(KEY_3D_AUTO_TILT, true).toBool());
@@ -932,6 +937,8 @@ void Configuration::CanvasSettings::write(QSettings &conf) const
     conf.setValue(KEY_ROOM_ILLUMINATION, roomIllumination.get());
     conf.setValue(KEY_ROOM_LIGHT_STRENGTH, roomLightStrength.get());
     conf.setValue(KEY_ROOM_LIGHT_FLICKER, roomLightFlicker.get());
+    conf.setValue(KEY_TERRAIN_REFLECTIONS, terrainReflections.get());
+    conf.setValue(KEY_TERRAIN_REFLECTION_STRENGTH, terrainReflectionStrength.get());
     conf.setValue(KEY_SEASONAL_TERRAIN, seasonalTerrain.get());
     conf.setValue(KEY_3D_CANVAS, advanced.use3D.get());
     conf.setValue(KEY_3D_AUTO_TILT, advanced.autoTilt.get());

@@ -20,6 +20,7 @@
 #include "MapCanvasData.h"
 #include "MapCanvasRoomDrawer.h"
 #include "TerrainDoorState.h"
+#include "TerrainMaterialMaps.h"
 #include "TerrainRoomLighting.h"
 #include "Textures.h"
 
@@ -191,6 +192,11 @@ private:
     GLRenderState m_roomLightState;
     glm::vec4 m_terrainShadow{0.f};
     float m_terrainDay = -1.f;
+    int m_terrainMaterialAtlas = -1;
+    int m_terrainPackAtlas = -1;
+    uint64_t m_materialGeneration = 0;
+    bool m_terrainMaterialsReady = false;
+    terrain_material_maps::Pages m_pendingTerrainMaterials;
     std::optional<MumeMoment> m_terrainPreviewMoment;
     mutable OpenGL m_opengl;
     GLFont m_glFont;

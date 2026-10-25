@@ -209,6 +209,7 @@
     <file>pixmaps/terrain-road-shores.png</file>
     <file>pixmaps/terrain-rapids-patches.png</file>
     <file>pixmaps/terrain-water-flow.png</file>
+    <file>pixmaps/terrain-water-flow-ribbon.png</file>
         <file>pixmaps/terrain-borders-seasons.png</file>
         <file>pixmaps/organic-terrain/packs.json</file>
         <file>pixmaps/terrain-hills.png</file>
@@ -248,6 +249,7 @@
         <file>shaders/legacy/line/ucolor/frag.glsl</file>
         <file>shaders/legacy/line/ucolor/vert.glsl</file>
         <file>shaders/legacy/terrain/frag.glsl</file>
+        <file>shaders/legacy/terrain/reflections.glsl</file>
         <file>pixmaps/terrain-light-masks.png</file>
         <file>shaders/legacy/room-lighting.glsl</file>
         <file>shaders/legacy/terrain/vert.glsl</file>
@@ -275,5 +277,32 @@
         <file>shaders/legacy/weather/simulation/vert.glsl</file>
         <file>shaders/legacy/weather/timeofday/frag.glsl</file>
         <file>shaders/legacy/weather/timeofday/vert.glsl</file>
+        <file>pixmaps/organic-terrain/lorien-mallorn/spring.png</file>
+        <file>pixmaps/organic-terrain/lorien-mallorn/autumn.png</file>
+        <file>pixmaps/organic-terrain/lorien-mallorn/terrain-forest-ground-seasons.png</file>
+        <file>pixmaps/organic-terrain/lorien-mallorn/terrain-field-details-all.png</file>
+        <file alias="pixmaps/organic-terrain/lorien-mallorn/summer.png">pixmaps/organic-terrain/lorien-mallorn/spring.png</file>
+        <file alias="pixmaps/organic-terrain/lorien-mallorn/winter.png">pixmaps/organic-terrain/lorien-mallorn/autumn.png</file>
+        <file alias="pixmaps/organic-terrain/lorien-mallorn/terrain-field-ground-seasons.png">pixmaps/organic-terrain/lorien-mallorn/terrain-forest-ground-seasons.png</file>
+        <file>pixmaps/organic-terrain/alpine-rust-snow/terrain-mountain-ground-seasons.png</file>
+        <file>pixmaps/organic-terrain/alpine-rust-snow/terrain-mountain-peaks-seasons.png</file>
+        <file>pixmaps/organic-terrain/shire/spring.png</file>
+        <file>pixmaps/organic-terrain/shire/summer.png</file>
+        <file>pixmaps/organic-terrain/shire/autumn.png</file>
+        <file>pixmaps/organic-terrain/shire/winter.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-field-ground-seasons.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-forest-ground-seasons.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-field-details-seasons.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-city-ground-v2.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-indoor-ground-v2.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-road-seasons.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-city-eaves-v3.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-timber-walls.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-stone-walls.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-roof-caps.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-doors.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-wall-finishes.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-road-cart-tracks.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-city-wall-fringe.png</file>
     </qresource>
 </RCC>

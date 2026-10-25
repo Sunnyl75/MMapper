@@ -309,6 +309,22 @@ bool GLWeather::outdoorStreetLightsOn() const
     return terrain_room_light::streetLampsOn(time);
 }
 
+terrain_reflections::Light GLWeather::terrainSurfaceLight() const
+{
+    const bool preview = m_previewMoment.has_value();
+    const auto &moment = preview ? m_previewMoment : m_clockMoment;
+    if (!moment || (!preview && m_observer.getTimeOfDay() == MumeTimeEnum::UNKNOWN))
+        return {};
+    const auto schedule = MumeClock::getDawnDusk(moment->month);
+    return terrain_reflections::sample(moment->hour + moment->minute / 60.0,
+                                       schedule.dawnHour,
+                                       schedule.duskHour,
+                                       moment->moonZenithMinutes() / 60.0,
+                                       moment->moonLevel() / 12.0,
+                                       moment->moonVisibility() != MumeMoonVisibilityEnum::INVISIBLE
+                                           && !moment->isMoonBelowHorizon());
+}
+
 void GLWeather::updateSkyTint()
 {
     m_skyTint = glm::vec4{0.f, 0.f, 0.f, -1.f};

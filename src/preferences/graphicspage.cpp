@@ -81,6 +81,15 @@ GraphicsPage::GraphicsPage(QWidget *parent)
     });
 
     // NamedConfig callbacks repaint lighting without rebuilding the terrain meshes.
+    connect(ui->terrainReflections,
+            qOverload<int>(&QComboBox::currentIndexChanged),
+            this,
+            [](int mode) { setConfig().canvas.terrainReflections.set(mode); });
+    connect(ui->terrainReflectionStrength,
+            qOverload<int>(&QSpinBox::valueChanged),
+            this,
+            [](int strength) { setConfig().canvas.terrainReflectionStrength.set(strength); });
+
     connect(ui->roomIllumination, &QCheckBox::toggled, this, [](const bool enabled) {
         setConfig().canvas.roomIllumination.set(enabled);
     });
@@ -206,6 +215,8 @@ void GraphicsPage::slot_loadConfig()
 
     ui->trilinearFilteringCheckBox->setChecked(settings.trilinearFiltering.get());
 
+    ui->terrainReflections->setCurrentIndex(settings.terrainReflections.get());
+    ui->terrainReflectionStrength->setValue(settings.terrainReflectionStrength.get());
     ui->organicTerrain->setChecked(settings.organicTerrain.get());
     ui->seasonalTerrain->setChecked(settings.seasonalTerrain.get());
     ui->roomIllumination->setChecked(settings.roomIllumination.get());

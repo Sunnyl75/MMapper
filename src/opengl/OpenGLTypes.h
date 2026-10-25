@@ -256,6 +256,14 @@ struct NODISCARD GLRenderState final
         // glEnable(TEXTURE_2D), or glEnable(TEXTURE_3D)
         Textures textures;
         std::optional<float> pointSize;
+        glm::ivec4 terrainReflectionAtlas{-1,
+                                          -1,
+                                          0,
+                                          0}; // colour/data tile base, mode, pack lookup layer + 1
+        glm::ivec4 terrainReflectionMaterials{-1}; // shallows, rapids, mountain source bases
+        glm::vec4 terrainReflectionLight{0.f, 0.f, 1.f, 0.f};
+        glm::vec4 terrainReflectionColor{1.f, 1.f, 1.f, 0.f}; // RGB + strength
+        glm::vec4 terrainMoonTint{0.f};         // Pale-blue RGB + phase/horizon strength.
         float terrainDay = -1.f;                // Unknown/disabled uses summer artwork.
         glm::vec4 terrainShadow{0.f};           // projection x/y, opacity, shadow-pass flag
         glm::ivec4 terrainDoorRoom{0};          // Observed room x/y/z and N/S/E/W open mask.

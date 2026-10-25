@@ -373,6 +373,12 @@ bool MapCanvas::hostInitializeGL()
         this->requestForceUpdateMeshes();
     });
 
+    setConfig().canvas.terrainReflections.registerChangeCallback(m_lifetime, [this]() {
+        m_frameManager.requestUpdate();
+    });
+    setConfig().canvas.terrainReflectionStrength.registerChangeCallback(m_lifetime, [this]() {
+        m_frameManager.requestUpdate();
+    });
     setConfig().canvas.organicTerrain.registerChangeCallback(m_lifetime, [this]() {
         this->requestForceUpdateMeshes();
     });
@@ -641,6 +647,17 @@ void MapCanvas::applyPendingGLWork()
             m_batches.resetExistingMeshesButKeepPendingRemesh();
             markMultisamplingDirty();
         }
+    }
+    if (!m_pendingTerrainMaterials.empty() && m_terrainMaterialAtlas >= 0) {
+        for (std::size_t i = 0; i < m_pendingTerrainMaterials.size(); ++i) {
+            const auto index = static_cast<std::size_t>(m_terrainMaterialAtlas) + i;
+            const auto position = m_textures.terrain_sprites.at(index)->getArrayPosition();
+            getOpenGL().uploadArrayLayer(m_textures.terrain_sprites_Array,
+                                         position.position,
+                                         m_pendingTerrainMaterials[i]);
+        }
+        m_pendingTerrainMaterials.clear();
+        m_terrainMaterialsReady = true;
     }
     if (std::exchange(m_pendingUpdateTextures, false)) {
         updateTextures();
@@ -1222,8 +1239,55 @@ void MapCanvas::renderMapBatches()
                         static_cast<int>(m_doorObservation.openMask())};
         }
     }
-    const auto terrainState = m_roomLightState.withSkyTint(m_weather.getTerrainSkyTint())
-                                  .withTerrainDoors(doorRoom);
+    auto terrainState = m_roomLightState.withSkyTint(m_weather.getTerrainSkyTint())
+                            .withTerrainDoors(doorRoom);
+    // One sky sample per draw: diffuse moonlight works even with reflections
+    // disabled or while derived material maps are still being prepared.
+    const auto light = m_weather.terrainSurfaceLight();
+    terrainState.uniforms.terrainReflectionLight = {light.direction[0],
+                                                    light.direction[1],
+                                                    light.direction[2],
+                                                    light.direction[3]};
+    terrainState.uniforms.terrainMoonTint
+        = {light.color[0],
+           light.color[1],
+           light.color[2],
+           light.moonlight
+               * std::clamp(static_cast<float>(settings.weatherTimeOfDayIntensity.get()) / 50.f,
+                            0.f,
+                            2.f)};
+    if (m_terrainPackAtlas >= 0)
+        terrainState.uniforms.terrainReflectionAtlas.w = m_textures.terrain_sprites
+                                                             .at(static_cast<std::size_t>(
+                                                                 m_terrainPackAtlas))
+                                                             ->getArrayPosition()
+                                                             .position
+                                                         + 1;
+    if (m_terrainMaterialsReady && m_terrainMaterialAtlas >= 0) {
+        const auto water = static_cast<std::size_t>(
+            m_textures.terrainPacks.packs.front().atlas(terrain_materials::Family::WATER));
+        const auto data = static_cast<std::size_t>(m_terrainMaterialAtlas);
+        terrainState.uniforms.terrainReflectionAtlas
+            = {m_textures.terrain_sprites.at(water)->getArrayPosition().position * 16,
+               m_textures.terrain_sprites.at(data)->getArrayPosition().position * 16,
+               settings.terrainReflections.get(),
+               terrainState.uniforms.terrainReflectionAtlas.w};
+        glm::ivec4 sources{-1};
+        for (std::size_t i = 1; i < terrain_material_maps::MATERIALS.size(); ++i) {
+            const auto sourceIndex = static_cast<std::size_t>(
+                m_textures.terrainPacks.packs.front().atlas(
+                    terrain_material_maps::MATERIALS[i].family));
+            sources[static_cast<glm::length_t>(i - 1)]
+                = m_textures.terrain_sprites.at(sourceIndex)->getArrayPosition().position * 16;
+        }
+        terrainState.uniforms.terrainReflectionMaterials = sources;
+        terrainState.uniforms.terrainReflectionColor
+            = {light.color[0],
+               light.color[1],
+               light.color[2],
+               static_cast<float>(settings.terrainReflectionStrength.get()) / 100.f};
+    }
+
     const auto drawLayer = [this,
                             &batches,
                             &batchedMeshes,

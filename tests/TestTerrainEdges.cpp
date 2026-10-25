@@ -58,8 +58,9 @@ int main()
     assert(BANK != ROAD && ROAD != TRAIL && TRAIL != ROAD_BASE);
     for (unsigned side = 0; side < 4; ++side) {
         assert((flowRotation(side, false) + 2u) % 4u == flowRotation(side, true));
-        assert(flowVariant(12345u, side) == flowVariant(12345u, side));
-        assert(flowVariant(12345u, side) < 24u);
+        // Existing outgoing and opposite-side incoming flags select the same
+        // physical direction; the shader samples adjoining ribbon halves.
+        assert(flowRotation(side, false) == flowRotation(side ^ 1u, true));
     }
     // North enters southward; east leaves eastward (clockwise quarter turn).
     static_assert(flowRotation(0, true) == 2u);

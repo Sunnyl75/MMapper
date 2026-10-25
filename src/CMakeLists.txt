@@ -104,6 +104,9 @@ set(mmapper_SRCS
     display/TerrainEdges.h
     display/TerrainMaterials.h
     display/TerrainSpritePacks.h
+    display/TerrainMaterialMaps.cpp
+    display/TerrainMaterialMaps.h
+    display/TerrainReflections.h
     display/TerrainSpritePacks.cpp
     display/TerrainWalls.h
     display/TerrainTwilight.h
@@ -315,6 +318,7 @@ set(mmapper_SRCS
     mainwindow/mainwindow-saveslots.cpp
     mainwindow/TerrainPreviewClock.cpp
     mainwindow/TerrainPreviewClock.h
+    mainwindow/TerrainPreviewPlayback.h
     mainwindow/mainwindow.cpp
     mainwindow/mainwindow.h
     mainwindow/metatypes.cpp

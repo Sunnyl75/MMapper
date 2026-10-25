@@ -41,6 +41,7 @@ def compile_program(directory):
  for stage,kind in [('vert',GL.GL_VERTEX_SHADER),('frag',GL.GL_FRAGMENT_SHADER)]:
   shader=GL.glCreateShader(kind)
   source=(root/f'src/resources/shaders/legacy/{directory}/{stage}.glsl').read_text()
+  if directory=='terrain' and stage=='frag': source=source.replace('// TERRAIN_REFLECTION_FUNCTIONS',(root/'src/resources/shaders/legacy/terrain/reflections.glsl').read_text())
   if stage=='frag': source=shared+'\n'+source
   GL.glShaderSource(shader,header+source);GL.glCompileShader(shader)
   assert GL.glGetShaderiv(shader,GL.GL_COMPILE_STATUS),GL.glGetShaderInfoLog(shader)

@@ -38,6 +38,7 @@ program = GL.glCreateProgram()
 for stage, kind in [('vert', GL.GL_VERTEX_SHADER), ('frag', GL.GL_FRAGMENT_SHADER)]:
     shader = GL.glCreateShader(kind)
     source = (root / f'src/resources/shaders/legacy/terrain/{stage}.glsl').read_text()
+    if stage == 'frag': source = source.replace('// TERRAIN_REFLECTION_FUNCTIONS', (root/'src/resources/shaders/legacy/terrain/reflections.glsl').read_text())
     if stage == 'frag': source = (root/'src/resources/shaders/legacy/room-lighting.glsl').read_text()+'\n'+source
     GL.glShaderSource(shader, header + source)
     GL.glCompileShader(shader)
@@ -78,8 +79,12 @@ for slot in range(24):
     shore_frames.append(fitted.resize((32,32),Image.Resampling.BILINEAR).transpose(Image.Transpose.FLIP_TOP_BOTTOM))
 materials=bytearray()
 water_frames={}
-for family,filename in [(30,'terrain-rapids-patches.png'),(31,'terrain-water-flow.png')]:
+for family,filename in [(30,'terrain-rapids-patches.png'),(31,'terrain-water-flow-ribbon.png')]:
     sheet=Image.open(root/'src/resources/pixmaps'/filename).convert('RGBA')
+    if family == 31:
+        # One canonical image is expanded to fixed roles without alpha cropping.
+        water_frames[family]=[sheet.resize((32,32),Image.Resampling.BILINEAR).transpose(Image.Transpose.FLIP_TOP_BOTTOM)]*24
+        continue
     cell=sheet.width//6
     frames=[];bounds=[]
     for slot in range(24):
@@ -90,10 +95,7 @@ for family,filename in [(30,'terrain-rapids-patches.png'),(31,'terrain-water-flo
     scale=min(cell*.96/max(b[2]-b[0] for b in bounds),cell*.96/max(b[3]-b[1] for b in bounds))
     water_frames[family]=[]
     for frame,bound in zip(frames,bounds):
-        cropped=frame.crop(bound)
-        w=max(1,round(cropped.width*scale));h=max(1,round(cropped.height*scale))
-        fitted=Image.new('RGBA',(cell,cell))
-        fitted.paste(cropped.resize((w,h),Image.Resampling.BILINEAR),((cell-w)//2,(cell-h)//2))
+        fitted=frame # Soft patches keep their authored alpha tails.
         water_frames[family].append(fitted.resize((32,32),Image.Resampling.BILINEAR).transpose(Image.Transpose.FLIP_TOP_BOTTOM))
 for family in range(32):
     for page in range(2):
@@ -123,14 +125,14 @@ GL.glViewport(0,0,256,256)
 class Instance(C.Structure):
     _fields_ = [('pos', C.c_float * 4), ('data', C.c_int * 4)]
 
-def render(kind, here=7, sides=(1,1,1,1), mask=3, seed=12345, day=180, size=1, neighbours=0, wide=False, shade=1, walls=0, shadow=False, raw=None, sky=(.2,.8), light=0.0, reuse=False, view_override=None, door_room=(0,0,0,0)):
+def render(kind, here=7, sides=(1,1,1,1), mask=3, seed=12345, day=180, size=1, neighbours=0, wide=False, shade=1, walls=0, shadow=False, raw=None, sky=(.2,.8), light=0.0, reuse=False, view_override=None, door_room=(0,0,0,0), pos=(.5,.5), clear=True):
     packed = here | sum(s << (4 * (i + 1)) for i, s in enumerate(sides))
-    instance = Instance((C.c_float * 4)(.5,.5,size,0),
+    instance = Instance((C.c_float * 4)(*pos,size,0),
                         (C.c_int * 4)(packed,0,seed | neighbours << 16 | walls << 24,kind | mask << 4))
     if raw is not None:
         instance.data = (C.c_int * 4)(*raw)
     if not reuse:
-        GL.glBufferData(GL.GL_ARRAY_BUFFER, C.sizeof(instance), C.byref(instance), GL.GL_STATIC_DRAW)
+        GL.glBufferData(GL.GL_ARRAY_BUFFER, C.sizeof(instance), bytes(instance), GL.GL_STATIC_DRAW)
     view = (C.c_float * 16)(2/3,0,0,0, 0,2/3,0,0, 0,0,1,0, -1/3,-1/3,0,1) if wide else matrix
     if view_override is not None: view = view_override
     GL.glUniformMatrix4fv(GL.glGetUniformLocation(program, 'uMVP'),1,False,view)
@@ -139,7 +141,7 @@ def render(kind, here=7, sides=(1,1,1,1), mask=3, seed=12345, day=180, size=1, n
     GL.glUniform1f(GL.glGetUniformLocation(program, 'uTerrainDay'), day)
     GL.glUniform4i(GL.glGetUniformLocation(program, 'uTerrainDoorRoom'), *door_room)
     GL.glClearColor(0,0,0,0)
-    GL.glClear(GL.GL_COLOR_BUFFER_BIT)
+    if clear: GL.glClear(GL.GL_COLOR_BUFFER_BIT)
     GL.glDrawArraysInstanced(GL.GL_TRIANGLE_STRIP, 0, 4, 1)
     GL.glFinish()
     assert GL.glGetError() == GL.GL_NO_ERROR
@@ -246,8 +248,7 @@ for direction in range(4):
     check(im.getpixel((128,128))[3]==0)
 
 # Direction markers are authored wave crests, not the legacy blue chevrons.
-# Incoming and outgoing at the same side must face opposite ways. Rendering
-# actual atlas artwork through the production shader verifies each rotation.
+# Rendering actual atlas artwork through the production shader verifies each rotation.
 flow_kind=10 | 4096 | 8192 | 262144
 for variant in range(24):
     north=render(0,size=.4,raw=(31*32+variant,0,0,flow_kind))
@@ -852,6 +853,67 @@ if len(sys.argv) > 3:
     review.save(atlas_dir.parent / ('doors-shader-review-' + api + '.png'))
     opened_review.save(atlas_dir.parent / ('open-doors-shader-review-' + api + '.png'))
     examples.append(first)
+# Opposite native stream observations must reconstruct one uncut ribbon. No
+# neighbour search or extra flow inference is involved in choosing these halves.
+GL.glActiveTexture(GL.GL_TEXTURE0)
+GL.glBindTexture(GL.GL_TEXTURE_2D_ARRAY,texture)
+GL.glTexImage3D(GL.GL_TEXTURE_2D_ARRAY,0,GL.GL_RGBA8,128,128,64,0,
+               GL.GL_RGBA,GL.GL_UNSIGNED_BYTE,bytes(materials))
+GL.glTexParameteri(GL.GL_TEXTURE_2D_ARRAY,GL.GL_TEXTURE_MAX_LEVEL,0)
+GL.glTexParameteri(GL.GL_TEXTURE_2D_ARRAY,GL.GL_TEXTURE_MIN_FILTER,GL.GL_NEAREST)
+GL.glTexParameteri(GL.GL_TEXTURE_2D_ARRAY,GL.GL_TEXTURE_MAG_FILTER,GL.GL_NEAREST)
+pair_view=(C.c_float*16)(1,0,0,0, 0,1,0,0, 0,0,1,0, -.5,-1,0,1)
+render(0,raw=(31*32,0,0,flow_kind),size=.8,pos=(.5,.8),view_override=pair_view)
+paired=render(0,raw=(31*32,0,0,flow_kind | 524288),size=.8,
+              pos=(.5,1.2),view_override=pair_view,clear=False)
+check(alpha(paired).getextrema()[1]>64)
+# The non-flow textured quad samples the entire image, with the same aspect
+# ratio as the two half-quads above. Their rasterised results must agree.
+whole_view=(C.c_float*16)(.6,0,0,0, 0,1,0,0, 0,0,1,0, -.3,-1,0,1)
+whole=render(0,raw=(31*32,0,0,10|4096|8192),size=.8,
+             pos=(.5,1),view_override=whole_view)
+check(paired.tobytes()==whole.tobytes())
+
+# Exercise actual bundled road/water colours as well as synthetic geometry.
+# These two sheets retain their exact source frames; seasonal row order agrees
+# with appendSeasonalSheet. Qt's alpha-tail preservation has its own C++ test.
+real_materials=bytearray(materials)
+for family,filename in [(11,'terrain-road-seasons.png'),(12,'terrain-water-patches-seasons.png')]:
+    sheet=Image.open(root/'src/resources/pixmaps'/filename).convert('RGBA')
+    cell=sheet.width//6
+    for page in range(2):
+        atlas=Image.new('RGBA',(128,128))
+        for index in range(16):
+            slot=page*16+index
+            if slot>=24: continue
+            row=(slot//6+3)%4;col=slot%6
+            tile=sheet.crop((col*cell,row*cell,(col+1)*cell,(row+1)*cell))
+            atlas.paste(tile.resize((32,32),Image.Resampling.BILINEAR).transpose(Image.Transpose.FLIP_TOP_BOTTOM),
+                        ((index%4)*32,(index//4)*32))
+        start=(family*2+page)*128*128*4
+        real_materials[start:start+128*128*4]=atlas.tobytes()
+GL.glActiveTexture(GL.GL_TEXTURE0)
+GL.glBindTexture(GL.GL_TEXTURE_2D_ARRAY,texture)
+GL.glTexImage3D(GL.GL_TEXTURE_2D_ARRAY,0,GL.GL_RGBA8,128,128,64,0,
+               GL.GL_RGBA,GL.GL_UNSIGNED_BYTE,bytes(real_materials))
+route_view=(C.c_float*16)(1,0,0,0, 0,2,0,0, 0,0,1,0, -1,-1,0,1)
+for season_day in [30,120,210,300]:
+    render(7,day=season_day,pos=(.5,.5),view_override=route_view)
+    tiled=render(7,day=season_day,pos=(1.5,.5),view_override=route_view,clear=False)
+    complete=render(7,day=season_day,size=2,pos=(1,.5),view_override=route_view)
+    check(tiled.tobytes()==complete.tobytes())
+    # The previous mirror sampler produces exact reflected halves in a full
+    # repeat period. Independently rotated/selected art must break that motif.
+    period=1/.47
+    mirrored_view=(C.c_float*16)(2/period,0,0,0, 0,2/period,0,0,
+                               0,0,1,0, -1,-1,0,1)
+    road=render(7,day=season_day,size=4,pos=(1,1),view_override=mirrored_view)
+    check(road.tobytes()!=road.transpose(Image.Transpose.FLIP_LEFT_RIGHT).tobytes())
+    check(road.tobytes()!=road.transpose(Image.Transpose.FLIP_TOP_BOTTOM).tobytes())
+    water=render(9,day=season_day,raw=(12*32,0,0,9))
+    check(alpha(water).getextrema()==(255,255))
+    check(len(set(water.convert('RGB').getdata()))>32)
+
 print('PASS', checks, 'render assertions')
 EGL.eglMakeCurrent(display,EGL.EGL_NO_SURFACE,EGL.EGL_NO_SURFACE,EGL.EGL_NO_CONTEXT)
 EGL.eglDestroyContext(display,context)

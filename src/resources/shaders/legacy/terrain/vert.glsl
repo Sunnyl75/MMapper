@@ -50,6 +50,9 @@ void main()
     if (kind >= 2 && kind != 8) {
         vec2 offset = uv - vec2(0.5);
         bool flow = kind == 10 && (aTextureColor.w & 262144) != 0;
+        // One canonical ribbon spans both rooms. The existing stream visitor
+        // chooses the half; each quad ends exactly at its own room boundary.
+        if (flow) offset *= vec2(0.60, 0.50);
         int rotation = (kind == 2 || kind == 12 || flow) ? (aTextureColor.w >> 4) & 3 : 0;
         for (int i = 0; i < rotation; ++i) offset = vec2(-offset.y, offset.x);
         p = aAnchorSizeLayer.xy + offset * (kind == 13 ? 1.0 : aAnchorSizeLayer.z);
@@ -119,7 +122,8 @@ void main()
     vWallMask = (aTextureColor.z >> 24) & 15;
     vWaterClip = ivec3(ivec2(floor(aAnchorSizeLayer.xy)), (aTextureColor.z >> 16) & 255);
     vWinter = allSeason ? 0.0 : mix(previous == 0 ? 1.0 : 0.0, following == 0 ? 1.0 : 0.0, baseFade);
-    int tile = aTextureColor.x;
+    // Walls carry their pack selection above the ordinary tile index.
+    int tile = kind == 12 ? (aTextureColor.x & 1048575) : aTextureColor.x;
     bool door = kind == 12 && (aTextureColor.w & 256) != 0;
     vTiles = ivec2(tile + previous * 6, tile + following * 6);
     if (door && uTerrainDoorRoom.w != 0) {
@@ -135,6 +139,8 @@ void main()
             vTiles += ivec2(6); // Open frames reuse the exact closed-frame posts.
     }
     vTreeUV = uv;
+    if (kind == 10 && (aTextureColor.w & 262144) != 0)
+        vTreeUV.y = uv.y*0.5 + ((aTextureColor.w & 524288) != 0 ? 0.5 : 0.0);
     if ((kind == 10 || kind == 11) && ((aTextureColor.w >> 8) & 1) != 0) vTreeUV.x = 1.0 - vTreeUV.x;
     vSeasonMix = fade;
     vColor = vec4(uNamedColors[kind == 13 || door ? 0 : aTextureColor.y].rgb, 1.0);

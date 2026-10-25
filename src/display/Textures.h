@@ -1,5 +1,6 @@
 #pragma once
 #include "TerrainMaterials.h"
+#include "TerrainSpritePacks.h"
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2019 The MMapper Authors
 
@@ -204,11 +205,7 @@ struct NODISCARD MapCanvasTextures final
     XFOREACH_MAPCANVAS_TEXTURES(X_DECL)
 #undef X_DECL
 
-    std::array<bool, terrain_materials::SHEETS.size()>
-        terrainWallPacks{};                  // Per-family wall artwork availability.
-    std::array<int, 3> terrainGroundPacks{}; // Forest ground, field ground, field details.
-    std::map<std::string, int, std::less<>>
-        terrainSpritePacks; // Exact saved room areas -> first atlas.
+    terrain_sprites::PackSelections terrainPacks;
 
 private:
     template<typename Callback>
@@ -283,10 +280,7 @@ using proxy_t = typename Proxy<T>::type;
 
 struct NODISCARD MapCanvasTexturesProxy final
 {
-    std::array<bool, terrain_materials::SHEETS.size()>
-        terrainWallPacks{}; // Per-family wall artwork availability.
-    std::array<int, 3> terrainGroundPacks{};
-    std::map<std::string, int, std::less<>> terrainSpritePacks;
+    terrain_sprites::PackSelections terrainPacks;
 #define X_DECL_PROXY(_Type, _Name) mctp::detail::proxy_t<_Type> _Name;
     XFOREACH_MAPCANVAS_TEXTURES(X_DECL_PROXY)
 #undef X_DECL_PROXY

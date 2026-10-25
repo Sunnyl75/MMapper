@@ -2,7 +2,12 @@
 // Copyright (C) 2026 The MMapper Authors
 #include "TerrainSpritePacks.h"
 
+#include "../global/Charset.h"
+#include "TerrainMaterialMaps.h"
+
+#include <algorithm>
 #include <array>
+#include <cstdint>
 #include <stdexcept>
 
 #include <QDir>
@@ -212,8 +217,11 @@ QImage expandFixedSheet(const QImage &source, const int columns, const int rows)
 QImage alignSeasonalSheet(const QImage &input, const terrain_materials::Placement placement)
 {
     using P = terrain_materials::Placement;
-    if ((placement == P::MATERIAL || placement == P::REPEAT) || input.isNull() || input.width() % 6
-        || input.height() % 4 || input.width() / 6 != input.height() / 4)
+    // Soft water patches are authored on an exact grid. Cropping them to an
+    // alpha-64 bounding box throws away the faint wash and creates square cuts.
+    if ((placement == P::MATERIAL || placement == P::REPEAT || placement == P::SOFT_PATCH)
+        || input.isNull() || input.width() % 6 || input.height() % 4
+        || input.width() / 6 != input.height() / 4)
         return input;
     const auto source = input.convertToFormat(QImage::Format_ARGB32);
     const int cell = source.width() / 6;
@@ -556,7 +564,9 @@ int appendFixedSheet(SpritePacks &result, const QImage &sheet)
     return appendSheet(result, sheet, false);
 }
 
-SpritePacks loadSpritePacks(const QString &manifest, const QImage &bundled)
+SpritePacks loadSpritePacks(const QString &manifest,
+                            const QImage &bundled,
+                            const QStringList &namedRoots)
 {
     if (bundled.isNull() || bundled.width() % 6 || bundled.height() % 4
         || bundled.width() / 6 != bundled.height() / 4) {
@@ -572,20 +582,21 @@ SpritePacks loadSpritePacks(const QString &manifest, const QImage &bundled)
         global[static_cast<std::size_t>(s)] = readSheet(
             defaults.filePath(QString::fromLatin1(seasons[static_cast<std::size_t>(s)]) + ".png"));
     }
-    const auto appendPack = [&](const QString &directory) {
-        const QDir dir{root.filePath(directory)};
-        const QImage all = directory.isEmpty() ? QImage{} : readSheet(dir.filePath("all.png"));
+    const auto appendPack = [&](const QStringList &directories) {
         std::array<QImage, 24> trees;
         for (int s = 0; s < 4; ++s) {
             const auto si = static_cast<std::size_t>(s);
-            const QImage local = directory.isEmpty()
-                                     ? QImage{}
-                                     : readSheet(
-                                           dir.filePath(QString::fromLatin1(seasons[si]) + ".png"));
-            const QImage &sheet = !local.isNull()        ? local
-                                  : !all.isNull()        ? all
-                                  : !global[si].isNull() ? global[si]
-                                                         : globalAll;
+            QImage sheet;
+            for (const auto &directory : directories) {
+                const QDir dir{directory};
+                sheet = readSheet(dir.filePath(QString::fromLatin1(seasons[si]) + ".png"));
+                if (sheet.isNull())
+                    sheet = readSheet(dir.filePath("all.png"));
+                if (!sheet.isNull())
+                    break;
+            }
+            if (sheet.isNull())
+                sheet = !global[si].isNull() ? global[si] : globalAll;
             for (int v = 0; v < 6; ++v) {
                 auto &image = trees[static_cast<std::size_t>(s * 6 + v)];
                 if (!sheet.isNull())
@@ -601,37 +612,382 @@ SpritePacks loadSpritePacks(const QString &manifest, const QImage &bundled)
         appendImages(result, trees);
     };
     appendPack({});
-    QFile file{manifest};
-    if (!file.open(QIODevice::ReadOnly))
-        return result;
-    QJsonParseError error;
-    const auto document = QJsonDocument::fromJson(file.readAll(), &error);
-    if (error.error != QJsonParseError::NoError || !document.isObject()) {
-        qWarning() << "Ignoring invalid organic terrain manifest:" << manifest;
-        return result;
+    const auto readZones = [](const QString &path) {
+        QFile file{path};
+        if (!file.open(QIODevice::ReadOnly))
+            return QJsonObject{};
+        QJsonParseError error;
+        const auto document = QJsonDocument::fromJson(file.readAll(), &error);
+        if (error.error != QJsonParseError::NoError || !document.isObject()) {
+            qWarning() << "Ignoring invalid organic terrain manifest:" << path;
+            return QJsonObject{};
+        }
+        return document.object().value("superzones").toObject();
+    };
+    const QString builtinManifest{QStringLiteral(":/pixmaps/organic-terrain/packs.json")};
+    auto zones = readZones(builtinManifest);
+    if (manifest != builtinManifest) {
+        const auto overrides = readZones(manifest);
+        for (auto it = overrides.begin(); it != overrides.end(); ++it)
+            zones.insert(it.key(), it.value());
     }
+    // Optional aliases remain available for sharing one pack between areas.
+    // Named folders need no manifest; user roots override asset-root aliases.
+    for (auto it = namedRoots.crbegin(); it != namedRoots.crend(); ++it) {
+        const auto overrides = readZones(QDir{*it}.filePath(QStringLiteral("packs.json")));
+        for (auto zone = overrides.begin(); zone != overrides.end(); ++zone)
+            zones.insert(zone.key(), zone.value());
+    }
+    QStringList roots = namedRoots;
+    roots.append(root.path());
+    roots.append(QStringLiteral(":/pixmaps/organic-terrain"));
+    roots.removeDuplicates();
     std::map<QString, int> loaded;
-    const auto zones = document.object().value("superzones").toObject();
+    const auto loadPack = [&](const QString &pack) {
+        const auto existing = loaded.find(pack);
+        if (existing != loaded.end())
+            return existing->second;
+        QStringList directories;
+        for (const auto &base : roots) {
+            const auto directory = QDir{base}.filePath(pack);
+            if (QDir{directory}.exists())
+                directories.append(directory);
+        }
+        int atlas = 0;
+        if (!directories.isEmpty() && result.directories.size() < 44) {
+            atlas = static_cast<int>(result.atlases.size());
+            appendPack(directories);
+            result.directories.emplace(atlas, directories);
+        } else if (!directories.isEmpty()) {
+            qWarning() << "Organic terrain supports at most 44 distinct packs:" << pack;
+        }
+        loaded.emplace(pack, atlas);
+        return atlas;
+    };
+    // Direct folder names use the same key as area media. Scan only once on
+    // texture load; room drawing resolves the prepared in-memory selection.
+    for (const auto &base : namedRoots) {
+        const QDir directory{base};
+        for (const auto &entry :
+             directory.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
+            if (entry == QStringLiteral("default"))
+                continue;
+            const QDir pack{directory.filePath(entry)};
+            if (pack.entryList({QStringLiteral("*.png")}, QDir::Files).isEmpty())
+                continue;
+            result.namedAreas.try_emplace(entry.toUtf8().toStdString(), loadPack(entry));
+        }
+    }
     const QRegularExpression safeName{QStringLiteral("^[A-Za-z0-9_-]+$")};
     for (auto it = zones.begin(); it != zones.end(); ++it) {
-        if (result.areas.size() >= 44) {
-            qWarning() << "Organic terrain supports at most 44 superzone overrides";
-            break;
-        }
         const QString pack = it.value().toString();
         if (it.key().isEmpty() || !safeName.match(pack).hasMatch()) {
             qWarning() << "Ignoring invalid organic terrain pack:" << it.key();
             continue;
         }
-        auto [found, inserted] = loaded.emplace(pack, static_cast<int>(result.atlases.size()));
-        if (inserted) {
-            if (QDir{root.filePath(pack)}.exists())
-                appendPack(pack);
-            else
-                found->second = 0;
-        }
-        result.areas.emplace(it.key().toUtf8().toStdString(), found->second);
+        result.areas.emplace(it.key().toUtf8().toStdString(), loadPack(pack));
     }
     return result;
+}
+
+int PackSelection::atlas(const terrain_materials::Family family) const
+{
+    return materials.at(static_cast<std::size_t>(family));
+}
+bool PackSelection::has(const terrain_materials::Family family) const
+{
+    return available.at(static_cast<std::size_t>(family));
+}
+int PackSelections::index(const std::string_view area) const
+{
+    if (!namedAreas.empty()) {
+        static const QRegularExpression article{QStringLiteral("^the\\s+")};
+        auto name = QString::fromUtf8(area.data(), static_cast<qsizetype>(area.size()))
+                        .toLower()
+                        .remove(article)
+                        .replace(' ', '-');
+        mmqt::toAsciiInPlace(name);
+        const auto named = namedAreas.find(name.toUtf8().toStdString());
+        if (named != namedAreas.end() && named->second != 0)
+            return named->second;
+    }
+    const auto found = areas.find(area);
+    return found == areas.end() ? 0 : found->second;
+}
+const PackSelection &PackSelections::find(const std::string_view area) const
+{
+    return packs.at(static_cast<std::size_t>(index(area)));
+}
+
+namespace {
+using F = terrain_materials::Family;
+using P = terrain_materials::Placement;
+bool fixedFamily(const F family)
+{
+    return family == F::DOOR || family == F::DEATH_TRAP || family == F::ROAD_SHORE
+           || family == F::WATER_FLOW || family == F::RAPIDS || family == F::UNDERWATER_GROUND
+           || family == F::UNDERWATER_DETAIL
+           || terrain_materials::SHEETS.at(static_cast<std::size_t>(family)).placement == P::FINISH
+           || terrain_materials::SHEETS.at(static_cast<std::size_t>(family)).placement == P::EAVE;
+}
+bool reflectiveFamily(const F family)
+{
+    return std::any_of(terrain_material_maps::MATERIALS.begin(),
+                       terrain_material_maps::MATERIALS.end(),
+                       [family](const auto &material) { return material.family == family; });
+}
+QImage prepareMaterial(QImage sheet, const F family, const QImage &caps, const bool allSeason)
+{
+    if (sheet.isNull())
+        return {};
+    const auto placement = terrain_materials::SHEETS.at(static_cast<std::size_t>(family)).placement;
+    if (allSeason)
+        sheet = expandFixedSheet(sheet, 3, 2);
+    else if (family == F::ROAD_SHORE)
+        sheet = alignRoadShoreSheet(sheet);
+    else if (family == F::DOOR)
+        sheet = alignDoorSheet(sheet);
+    else if (family == F::DEATH_TRAP || family == F::WATER_FLOW)
+        sheet = expandFixedSheet(sheet, 1, 1);
+    else if (family == F::UNDERWATER_GROUND || family == F::UNDERWATER_DETAIL)
+        sheet = expandFixedSheet(sheet, family == F::UNDERWATER_GROUND ? 3 : 6, 2);
+    if (sheet.isNull())
+        return {};
+    if (placement == P::REPEAT) {
+        if (sheet.width() != sheet.height())
+            return {};
+    } else if (sheet.width() % 6 || sheet.height() % 4 || sheet.width() / 6 != sheet.height() / 4)
+        return {};
+    sheet = alignSeasonalSheet(sheet, placement);
+    if (placement == P::FINISH)
+        applyRoofCaps(sheet, caps);
+    return sheet;
+}
+int appendMaterial(SpritePacks &sprites, const QImage &sheet, const F family)
+{
+    if (terrain_materials::SHEETS.at(static_cast<std::size_t>(family)).placement == P::REPEAT)
+        return appendRepeatMaterial(sprites, sheet);
+    return fixedFamily(family) ? appendFixedSheet(sprites, sheet)
+                               : appendSeasonalSheet(sprites, sheet);
+}
+QString allSeasonFilename(QString filename)
+{
+    filename.replace(QStringLiteral("-seasons.png"), QStringLiteral("-all.png"));
+    return filename;
+}
+} // namespace
+
+PackSelections loadMaterialPacks(SpritePacks &sprites,
+                                 const ImageLoader &loadGlobal,
+                                 const int maxLayers)
+{
+    // Reserve one metadata page and the eight shared reflection pages. Each
+    // reflective override reserves its own data pair before accepting its art.
+    constexpr int stride = terrain_materials::LAYERS_PER_SHEET;
+    int reserved = 1 + stride * static_cast<int>(terrain_material_maps::MATERIALS.size());
+    if (static_cast<int>(sprites.atlases.size())
+            + stride * static_cast<int>(terrain_materials::SHEETS.size()) + reserved
+        > maxLayers)
+        throw std::runtime_error("Insufficient texture array layers for terrain defaults");
+    PackSelections result;
+    PackSelection defaults;
+    const auto globalCaps = loadGlobal(QStringLiteral("terrain-roof-caps.png"));
+    QImage globalFinishes;
+    constexpr auto &sheets = terrain_materials::SHEETS;
+    for (std::size_t i = 0; i < sheets.size(); ++i) {
+        const auto family = static_cast<F>(i);
+        const auto filename = QString::fromLatin1(terrain_materials::SHEETS[i].filename);
+        auto source = loadGlobal(filename);
+        auto sheet = prepareMaterial(source, family, globalCaps, false);
+        if (sheet.isNull()) {
+            qWarning() << "Invalid terrain material; using bundled fallback:" << filename;
+            source = QImage{QStringLiteral(":/pixmaps/") + filename};
+            sheet = prepareMaterial(source, family, globalCaps, false);
+        }
+        if (family == F::WALL_FINISH)
+            globalFinishes = source;
+        defaults.available[i] = !sheet.isNull();
+        if (sheet.isNull()) {
+            sheet = QImage{1536, 1024, QImage::Format_ARGB32_Premultiplied};
+            sheet.fill(Qt::transparent);
+        }
+        defaults.materials[i] = appendMaterial(sprites, sheet, family);
+    }
+    result.packs.push_back(defaults);
+    std::map<int, int> selections{{0, 0}};
+    for (const auto &[treeBase, directories] : sprites.directories) {
+        auto selection = defaults;
+        selection.trees = treeBase;
+        QImage localCaps;
+        for (const auto &directory : directories) {
+            localCaps = QImage{QDir{directory}.filePath(QStringLiteral("terrain-roof-caps.png"))};
+            if (!localCaps.isNull())
+                break;
+        }
+        for (std::size_t i = 0; i < sheets.size(); ++i) {
+            const auto family = static_cast<F>(i);
+            const auto filename = QString::fromLatin1(terrain_materials::SHEETS[i].filename);
+            QImage sheet;
+            QString path;
+            for (const auto &directory : directories) {
+                const QDir dir{directory};
+                path = dir.filePath(filename);
+                bool allSeason = false;
+                if (!QFile::exists(path) && !fixedFamily(family)
+                    && filename.endsWith(QStringLiteral("-seasons.png"))) {
+                    path = dir.filePath(allSeasonFilename(filename));
+                    allSeason = true;
+                }
+                if (!QFile::exists(path))
+                    continue;
+                sheet = prepareMaterial(QImage{path},
+                                        family,
+                                        localCaps.isNull() ? globalCaps : localCaps,
+                                        allSeason);
+                if (!sheet.isNull())
+                    break;
+                qWarning() << "Ignoring invalid regional terrain material:" << path;
+            }
+            if (sheet.isNull() && family == F::WALL_FINISH && !localCaps.isNull())
+                sheet = prepareMaterial(globalFinishes, family, localCaps, false);
+            if (sheet.isNull())
+                continue;
+            const int dataLayers = reflectiveFamily(family) ? stride : 0;
+            if (static_cast<int>(sprites.atlases.size()) + stride + reserved + dataLayers
+                > maxLayers) {
+                qWarning() << "Texture layer limit; retaining default terrain material:" << path;
+                continue;
+            }
+            selection.materials[i] = appendMaterial(sprites, sheet, family);
+            selection.available[i] = true;
+            reserved += dataLayers;
+        }
+        // These optional detail sheets do not change the stable family ABI.
+        // Six fixed roles, on a 3x2 grid; invalid or absent files draw nothing.
+        for (const auto &[filename, destination] :
+             {std::pair{"terrain-road-cart-tracks.png", &selection.cartTracks},
+              std::pair{"terrain-city-wall-fringe.png", &selection.cityWallFringe}}) {
+            for (const auto &directory : directories) {
+                const auto path = QDir{directory}.filePath(QString::fromLatin1(filename));
+                auto source = QImage{path};
+                if (destination == &selection.cityWallFringe && !source.isNull()
+                    && source.width() % 3 == 0 && source.height() % 2 == 0
+                    && source.width() / 3 == source.height() / 2) {
+                    // Crop only the common vertical alpha band, preserving
+                    // each strip's authored width and endpoint coordinates.
+                    const int cell = source.width() / 3;
+                    QImage aligned{source.size(), QImage::Format_ARGB32_Premultiplied};
+                    aligned.fill(Qt::transparent);
+                    QPainter painter{&aligned};
+                    for (int role = 0; role < 6; ++role) {
+                        const auto tile = source.copy((role % 3) * cell,
+                                                      (role / 3) * cell,
+                                                      cell,
+                                                      cell);
+                        int top = cell, bottom = 0;
+                        for (int y = 0; y < cell; ++y)
+                            for (int x = 0; x < cell; ++x)
+                                if (tile.pixelColor(x, y).alpha() >= 16) {
+                                    top = std::min(top, y);
+                                    bottom = std::max(bottom, y + 1);
+                                }
+                        if (bottom > top)
+                            painter.drawImage(QRect{(role % 3) * cell, (role / 3) * cell, cell, cell},
+                                              tile,
+                                              QRect{0, top, cell, bottom - top});
+                    }
+                    painter.end();
+                    source = aligned;
+                }
+                const auto detail = expandFixedSheet(source, 3, 2);
+                if (detail.isNull())
+                    continue;
+                if (static_cast<int>(sprites.atlases.size()) + stride + reserved <= maxLayers)
+                    *destination = appendFixedSheet(sprites, detail);
+                else
+                    qWarning() << "Texture layer limit; omitting optional terrain detail:" << path;
+                break;
+            }
+        }
+        selections.emplace(treeBase, static_cast<int>(result.packs.size()));
+        result.packs.push_back(selection);
+    }
+    for (const auto &[area, treeBase] : sprites.areas)
+        result.areas.emplace(area, selections.at(treeBase));
+    for (const auto &[name, treeBase] : sprites.namedAreas)
+        result.namedAreas.emplace(name, selections.at(treeBase));
+    return result;
+}
+
+std::vector<QImage> packLookup(const SpritePacks &sprites,
+                               const PackSelections &selections,
+                               const std::vector<std::array<int, 3>> &reflectionSources)
+{
+    QImage table{512, 512, QImage::Format_RGBA8888};
+    table.fill(Qt::transparent);
+    for (std::size_t row = 0; row < selections.packs.size(); ++row) {
+        const auto &selection = selections.packs[row];
+        // Keep detail records clear of family records, ground colours and the
+        // reflection table. Alpha is availability; RG stores the tile base.
+        for (const auto &[column, atlas] :
+             {std::pair{200, selection.cartTracks}, std::pair{201, selection.cityWallFringe}})
+            if (atlas >= 0) {
+                const int base = atlas * 16;
+                table.setPixelColor(column,
+                                    static_cast<int>(row),
+                                    QColor{base & 255, (base >> 8) & 255, 0, 255});
+            }
+        for (std::size_t family = 0; family < selection.materials.size(); ++family) {
+            const int atlas = selection.materials[family];
+            const int tileBase = atlas * 16;
+            table.setPixelColor(static_cast<int>(family),
+                                static_cast<int>(row),
+                                QColor{tileBase & 255, (tileBase >> 8) & 255, 0, 255});
+            if (atlas == selections.packs.front().materials[family])
+                continue;
+            // A regional ground undercoat should not turn snowy behind a
+            // deliberately green winter sheet. Derive its fill from the art.
+            for (int season = 0; season < 4; ++season) {
+                const int index = season * 6;
+                const auto &page = sprites.atlases.at(static_cast<std::size_t>(atlas + index / 16))
+                                       .front();
+                std::array<int64_t, 4> sums{};
+                for (int y = 0; y < 128; y += 4)
+                    for (int x = 0; x < 128; x += 4) {
+                        const auto color = page.pixelColor((index % 4) * 128 + x,
+                                                           (index % 16) / 4 * 128 + y);
+                        const int alpha = color.alpha();
+                        if (alpha < 128)
+                            continue;
+                        sums[0] += color.red() * alpha;
+                        sums[1] += color.green() * alpha;
+                        sums[2] += color.blue() * alpha;
+                        sums[3] += alpha;
+                    }
+                if (sums[3] != 0)
+                    table.setPixelColor(32 + static_cast<int>(family) * 4 + season,
+                                        static_cast<int>(row),
+                                        QColor{static_cast<int>(sums[0] / sums[3]),
+                                               static_cast<int>(sums[1] / sums[3]),
+                                               static_cast<int>(sums[2] / sums[3]),
+                                               255});
+            }
+        }
+    }
+    for (const auto &source : reflectionSources)
+        for (int page = 0; page < 2; ++page) {
+            const int layer = source[0] + page;
+            const int data = source[1] * 16;
+            table.setPixelColor(layer % 512,
+                                64 + layer / 512,
+                                QColor{data & 255, (data >> 8) & 255, source[2] + 1, 255});
+        }
+    std::vector<QImage> pages{table};
+    for (int size = 256; size >= 4; size /= 2) {
+        QImage mip{size, size, QImage::Format_RGBA8888};
+        mip.fill(Qt::transparent);
+        pages.push_back(mip);
+    }
+    return pages;
 }
 } // namespace terrain_sprites

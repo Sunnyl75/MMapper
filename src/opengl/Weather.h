@@ -3,6 +3,7 @@
 // Copyright (C) 2026 The MMapper Authors
 
 #include "../clock/mumemoment.h"
+#include "../display/TerrainReflections.h"
 #include "../global/ChangeMonitor.h"
 #include "../global/ConfigEnums.h"
 #include "../global/RuleOf5.h"
@@ -96,6 +97,7 @@ public:
     NODISCARD bool outdoorStreetLightsOn() const;
     // The terrain shader grades highlights before the existing sky overlay.
     NODISCARD glm::vec4 getTerrainSkyTint() const { return m_terrainSkyTint; }
+    NODISCARD terrain_reflections::Light terrainSurfaceLight() const;
     DELETE_CTORS_AND_ASSIGN_OPS(GLWeather);
 
 public:

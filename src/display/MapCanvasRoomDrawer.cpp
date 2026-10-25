@@ -1001,14 +1001,31 @@ private:
         return mask;
     }
 
+    const terrain_sprites::PackSelection &spritePack(const RoomHandle &room) const
+    {
+        return m_textures.terrainPacks.find(room.getArea().getStdStringViewUtf8());
+    }
+    int spriteAtlas(const RoomHandle &room, const terrain_materials::Family family) const
+    {
+        return spritePack(room).atlas(family);
+    }
+    bool hasArtwork(const RoomHandle &room, const terrain_materials::Family family) const
+    {
+        return spritePack(room).has(family);
+    }
+    int spritePackIndex(const RoomHandle &room) const
+    {
+        return m_textures.terrainPacks.index(room.getArea().getStdStringViewUtf8());
+    }
+
     void addWarning(const RoomHandle &room)
     {
         using F = terrain_materials::Family;
         if (!m_organicTerrain || !room.getLoadFlags().contains(RoomLoadFlagEnum::DEATHTRAP)
-            || !m_textures.terrainWallPacks.at(static_cast<std::size_t>(F::DEATH_TRAP)))
+            || !hasArtwork(room, F::DEATH_TRAP))
             return;
-        const auto tex = m_textures.terrain_sprites.at(static_cast<std::size_t>(
-            terrain_materials::atlas(m_textures.terrainGroundPacks[0], F::DEATH_TRAP)));
+        const auto tex = m_textures.terrain_sprites.at(
+            static_cast<std::size_t>(spriteAtlas(room, F::DEATH_TRAP)));
         const auto pos = room.getPosition();
         TerrainSpriteVert warning;
         warning.anchorSizeLayer = {static_cast<float>(pos.x) + 0.5f,
@@ -1040,7 +1057,7 @@ private:
                                                     paired ? peer->getIdExternal().asUint32() : 0u,
                                                     side < 2u ? 0u : 1u);
         const auto tex = m_textures.terrain_sprites.at(static_cast<std::size_t>(
-            terrain_materials::atlas(m_textures.terrainGroundPacks[0], F::DOOR)));
+            spriteAtlas(paired && peer->getIdExternal().asUint32() < id ? *peer : room, F::DOOR)));
         const auto pos = room.getPosition();
         TerrainSpriteVert door;
         door.anchorSizeLayer = {static_cast<float>(pos.x) + 0.5f,
@@ -1097,10 +1114,7 @@ private:
                                       static_cast<float>(pos.y) + 0.5f,
                                       1.f,
                                       static_cast<float>(pos.z)};
-        const auto first = m_textures.terrain_sprites
-                               .at(static_cast<std::size_t>(m_textures.terrainGroundPacks[0]))
-                               .position
-                           * 16;
+        const auto first = spritePackIndex(room);
         v.textureColor
             = glm::ivec4{static_cast<int>(
                              terrain_edges::withMaterials(terrain_edges::pack(edgeSector(terrain),
@@ -1111,9 +1125,7 @@ private:
                                           | (wallMask(pos) << 24u)),
                          0};
         m_data.spriteTexture = m_textures.terrain_sprites.front().array;
-        if (shoreMask != 0
-            && m_textures.terrainWallPacks.at(
-                static_cast<std::size_t>(terrain_materials::Family::ROAD_SHORE))) {
+        if (shoreMask != 0 && hasArtwork(room, terrain_materials::Family::ROAD_SHORE)) {
             // Rounded ends cross only known road/water neighbours and clear
             // corners. A wall on either side prevents the overlap.
             static constexpr std::array<std::array<int, 2>, 8> offsets{
@@ -1277,8 +1289,8 @@ private:
                                                        bool(mask & 2u),
                                                        bool(mask & 4u),
                                                        bool(mask & 8u)};
-            const auto firstShared = m_textures.terrainGroundPacks[0];
-            auto atlas = [&](F family) { return terrain_materials::atlas(firstShared, family); };
+            const auto &selection = spritePack(room);
+            auto atlas = [&](F family) { return selection.atlas(family); };
             m_data.spriteTexture = m_textures.terrain_sprites.front().array;
             static const std::array<Coordinate, 8> roadOffsets{Coordinate{0, 1, 0},
                                                                Coordinate{0, -1, 0},
@@ -1383,7 +1395,7 @@ private:
                             sprite.transition | ((waterMask & allowed) << 16u) | (walls << 24u));
                     }
                     if (room.getTerrainType() == RoomTerrainEnum::RAPIDS
-                        && m_textures.terrainWallPacks.at(static_cast<std::size_t>(F::RAPIDS))) {
+                        && hasArtwork(room, F::RAPIDS)) {
                         for (auto sprite : terrain_sprites::water(id ^ 0x52415049u)) {
                             sprite.variant = terrain_sprites::mix(id ^ sprite.transition) % 24u;
                             add(m_data.groundSprites,
@@ -1402,10 +1414,7 @@ private:
                         0,
                         3 | allSeason,
                         NamedColorEnum::DEFAULT);
-                    const auto firstTile = m_textures.terrain_sprites
-                                               .at(static_cast<std::size_t>(firstShared))
-                                               .position
-                                           * 16;
+                    const auto firstTile = spritePackIndex(room);
                     m_data.organicGroundBase.back().textureColor.x = static_cast<int>(
                         terrain_edges::withMaterials(static_cast<uint32_t>(sector),
                                                      static_cast<uint32_t>(firstTile)));
@@ -1430,7 +1439,7 @@ private:
                 uint32_t openEnds = 0;
                 for (const auto dir : ALL_EXITS_NESW) {
                     const auto face = wallFamily(room.getTerrainType(), pos, dir);
-                    if (!face || !m_textures.terrainWallPacks.at(static_cast<size_t>(*face)))
+                    if (!face || !hasArtwork(room, *face))
                         continue;
                     const float depth = terrain_walls::depth(*face)
                                         + (room.getTerrainType() == RoomTerrainEnum::CITY
@@ -1496,9 +1505,8 @@ private:
                     const bool city = diag->second == S::URBAN;
                     const auto face = terrain_walls::family(room.getTerrainType(), indoor, city);
                     if ((!indoor && !city) || !face
-                        || (*face != F::CITY_EAVE
-                            && !m_textures.terrainWallPacks.at(static_cast<size_t>(F::WALL_FINISH)))
-                        || !m_textures.terrainWallPacks.at(static_cast<size_t>(*face))
+                        || (*face != F::CITY_EAVE && !hasArtwork(room, F::WALL_FINISH))
+                        || !hasArtwork(room, *face)
                         || !(wallMask(pos + exitDir(v)) & (1u << horizontal))
                         || !(wallMask(pos + exitDir(h)) & (1u << vertical)))
                         continue;
@@ -1520,8 +1528,7 @@ private:
                         atlas(*face == F::CITY_EAVE ? F::CITY_EAVE : F::WALL_FINISH),
                         style,
                         tint);
-                    if (*face == F::CITY_EAVE
-                        && m_textures.terrainWallPacks.at(static_cast<size_t>(F::WALL_FINISH))) {
+                    if (*face == F::CITY_EAVE && hasArtwork(room, F::WALL_FINISH)) {
                         const auto finish = m_textures.terrain_sprites.at(
                             static_cast<size_t>(atlas(F::WALL_FINISH)));
                         auto cap = m_data.terrainWalls.back();
@@ -1590,10 +1597,7 @@ private:
                 default:
                     break;
                 }
-                const auto regional = m_textures.terrainSpritePacks.find(
-                    room.getArea().getStdStringViewUtf8());
-                const int tree = regional == m_textures.terrainSpritePacks.end() ? 0
-                                                                                 : regional->second;
+                const int tree = selection.trees;
                 for (size_t i = 0; i < count; ++i) {
                     auto sprite = sprites[i];
                     if (terrain_sprites::blocksTree(sprite, trail))
@@ -1638,9 +1642,11 @@ private:
 
     void virt_visitTrailTexture(const RoomHandle &room, const MMTexArrayPosition &trail) final
     {
-        // Organic city paving is the route surface; do not paint a legacy
-        // dirt trail over its cobbles. Keep legacy mode and other sectors.
-        if (m_organicTerrain && room.getTerrainType() == RoomTerrainEnum::CITY)
+        // Organic city and indoor paving already define the walking surface.
+        // Suppress legacy dirt trails on both; keep other sectors unchanged.
+        if (m_organicTerrain
+            && (room.getTerrainType() == RoomTerrainEnum::CITY
+                || room.getTerrainType() == RoomTerrainEnum::INDOORS))
             return;
         if (trail.array != INVALID_MM_TEXTURE_ID) {
             auto &batch = hasOrganicRoute(room) ? m_data.legacyTrails : m_data.roomTrails;
@@ -1672,8 +1678,7 @@ private:
         }
 
         if (m_organicTerrain && isNESW(dir) && room.getExit(dir).getExitFlags().isDoor()
-            && m_textures.terrainWallPacks.at(
-                static_cast<std::size_t>(terrain_materials::Family::DOOR))
+            && hasArtwork(room, terrain_materials::Family::DOOR)
             && (wallType == WallTypeEnum::DOOR || wallType == WallTypeEnum::SOLID)) {
             if (wallType == WallTypeEnum::DOOR)
                 addDoor(room, dir);
@@ -1697,15 +1702,12 @@ private:
                     // Doors and unsupported environments retain MMapper's own
                     // renderer until appropriate overlay artwork is provided.
                     if (m_organicTerrain && family && !room.getExit(dir).getExitFlags().isDoor()) {
-                        const auto slot = static_cast<size_t>(*family);
-                        if (m_textures.terrainWallPacks.at(slot)) {
+                        if (hasArtwork(room, *family)) {
                             const auto pos = room.getPosition();
                             const auto hash = terrain_sprites::mix(
                                 room.getIdExternal().asUint32()
                                 ^ (static_cast<uint32_t>(dir) * 0x57414c4cu));
-                            const auto pack
-                                = terrain_materials::atlas(m_textures.terrainGroundPacks[0],
-                                                           *family);
+                            const auto pack = spriteAtlas(room, *family);
                             const auto image = m_textures.terrain_sprites.at(
                                 static_cast<size_t>(pack));
                             const auto tint = room.getLightType() == RoomLightEnum::DARK
@@ -1766,17 +1768,18 @@ private:
                                 wall.textureColor.w |= terrain_materials::TIMBER_FACE;
                             if (*family == terrain_materials::Family::STONE_WALL)
                                 wall.textureColor.w |= terrain_materials::STONE_FACE;
-                            if (m_textures.terrainWallPacks.at(
-                                    static_cast<size_t>(terrain_materials::Family::WALL_FINISH))) {
-                                const int finishPack = terrain_materials::atlas(
-                                    m_textures.terrainGroundPacks[0],
-                                    terrain_materials::Family::WALL_FINISH);
+                            if (hasArtwork(room, terrain_materials::Family::WALL_FINISH)) {
+                                const int finishPack
+                                    = spriteAtlas(room, terrain_materials::Family::WALL_FINISH);
                                 const auto finish = m_textures.terrain_sprites.at(
                                     static_cast<size_t>(finishPack));
                                 wall.textureColor.z &= ~65535;
                                 wall.textureColor.z |= finish.position * 16;
                                 wall.textureColor.w |= terrain_materials::HAS_WALL_FINISH;
                             }
+                            // Retain the pack selection for optional wall-foot art.
+                            // The vertex shader keeps the tile in the low 20 bits.
+                            wall.textureColor.x |= spritePackIndex(room) << 20;
                             m_data.terrainWalls.emplace_back(wall);
                             if (roof
                                 && (faceMask
@@ -1824,7 +1827,7 @@ private:
             return;
         const auto side = static_cast<unsigned>(dir);
         using F = terrain_materials::Family;
-        if (side >= 4 || !m_textures.terrainWallPacks.at(static_cast<std::size_t>(F::WATER_FLOW))) {
+        if (side >= 4 || !hasArtwork(room, F::WATER_FLOW)) {
             m_data.organicLegacyStreams.emplace_back(room.getPosition(), tex);
             return;
         }
@@ -1834,29 +1837,31 @@ private:
         // The native traversal can report the same outgoing flag twice.
         if (!m_seenWaterFlows.insert(key).second)
             return;
-        const auto art = m_textures.terrain_sprites.at(static_cast<std::size_t>(
-            terrain_materials::atlas(m_textures.terrainGroundPacks[0], F::WATER_FLOW)));
+        const auto art = m_textures.terrain_sprites.at(
+            static_cast<std::size_t>(spriteAtlas(room, F::WATER_FLOW)));
         const auto pos = room.getPosition();
         const auto delta = exitDir(dir);
         TerrainSpriteVert flow;
         flow.anchorSizeLayer = {static_cast<float>(pos.x) + 0.5f
-                                    + 0.29f * static_cast<float>(delta.x),
+                                    + 0.30f * static_cast<float>(delta.x),
                                 static_cast<float>(pos.y) + 0.5f
-                                    + 0.29f * static_cast<float>(delta.y),
-                                0.40f,
+                                    + 0.30f * static_cast<float>(delta.y),
+                                0.80f,
                                 static_cast<float>(pos.z)};
         const auto tint = room.getLightType() == RoomLightEnum::DARK
                               ? getTintColor(RoomTintEnum::DARK)
                           : room.getSundeathType() == RoomSundeathEnum::NO_SUNDEATH
                               ? getTintColor(RoomTintEnum::NO_SUNDEATH)
                               : NamedColorEnum::DEFAULT;
-        flow.textureColor
-            = {art.position * 16 + static_cast<int>(terrain_edges::flowVariant(id, side)),
-               static_cast<int>(tint),
-               0,
-               terrain_materials::BORDER_KIND | terrain_materials::ALL_SEASON
-                   | terrain_materials::NO_SKY_SHADOW | terrain_materials::FLOW_OVERLAY
-                   | static_cast<int>(terrain_edges::flowRotation(side, incoming) << 4u)};
+        flow.textureColor = {art.position * 16,
+                             static_cast<int>(tint),
+                             0,
+                             terrain_materials::BORDER_KIND | terrain_materials::ALL_SEASON
+                                 | terrain_materials::NO_SKY_SHADOW
+                                 | terrain_materials::FLOW_OVERLAY
+                                 | (incoming ? terrain_materials::FLOW_INCOMING : 0)
+                                 | static_cast<int>(terrain_edges::flowRotation(side, incoming)
+                                                    << 4u)};
         m_data.spriteTexture = art.array;
         m_data.waterFlow.emplace_back(flow);
     }
