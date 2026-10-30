@@ -7,6 +7,9 @@
 #include "../global/Signal2.h"
 #include "../map/PromptFlags.h"
 #include "../proxy/GmcpMessage.h"
+#include "KnownRooms.h"
+
+#include <QSet>
 
 class NODISCARD GameObserver final
 {
@@ -28,8 +31,15 @@ public:
     Signal2<MumeMoment> sig2_tick;
 
     Signal2<> sig2_gainedLevel;
+    Signal2<> sig2_knownRoomsChanged;
+    Signal2<> sig2_requestKnownRooms;
+    Signal2<> sig2_knownRoomsCacheMissing;
 
 private:
+    KnownRooms m_knownRooms;
+    QSet<QString> m_knownRoomsConsumers;
+    void knownRoomsChanged(uint64_t previousRevision, bool request);
+
     MumeTimeEnum m_timeOfDay = MumeTimeEnum::UNKNOWN;
     MumeMoonPhaseEnum m_moonPhase = MumeMoonPhaseEnum::UNKNOWN;
     MumeMoonVisibilityEnum m_moonVisibility = MumeMoonVisibilityEnum::UNKNOWN;
@@ -39,6 +49,16 @@ private:
 
 public:
     void observeConnected();
+    void resetKnownRooms();
+    void configureKnownRoomsCache(const QString &directory, const QString &server);
+    // Stable consumer names let independent features share one request/cache.
+    // Each consumer must remove its own name when disabled or destroyed.
+    void setKnownRoomsConsumerEnabled(const QString &consumer, bool enabled);
+    NODISCARD bool isKnownRoomsTrackingEnabled() const { return !m_knownRoomsConsumers.empty(); }
+    NODISCARD const KnownRooms::Snapshot &getKnownRooms() const
+    {
+        return m_knownRooms.getSnapshot();
+    }
     void observeSentToMud(const QString &ba);
     void observeSentToUser(const QString &ba);
     void observeSentToUserGmcp(const GmcpMessage &m);
