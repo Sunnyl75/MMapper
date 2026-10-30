@@ -87,10 +87,15 @@ std::vector<QImage> loadTextures(const QStringList &files,
     return result;
 }
 
-ShadowGeometry buildShadow(const Map &map, ProgressCounter &progress)
+ShadowGeometry buildShadow(const Map &map,
+                           ProgressCounter &progress,
+                           const RoomVisibility &visibility)
 {
     ShadowGeometry result;
     progress.setNewTask(ProgressMsg{"Build foreground boundary shadow"}, map.getRoomsCount());
+    if (visibility.hidesAllRooms()) {
+        return result;
+    }
     // Only exposed edges cast the diffuse skirt. Adjacent room interiors do
     // not accumulate dark seams. The foreground itself covers the inner edge.
     const std::array<Coordinate, 4> neighbors{Coordinate{0, -1, 0},
@@ -107,12 +112,18 @@ ShadowGeometry buildShadow(const Map &map, ProgressCounter &progress)
     const Color outer{0.f, 0.f, 0.f, 0.f};
     for (const auto id : map.getRooms()) {
         progress.step();
-        const auto pos = map.getRoomHandle(id).getPosition();
+        const auto room = map.getRoomHandle(id);
+        if (!visibility.allows(room)) {
+            continue;
+        }
+        const auto pos = room.getPosition();
         const glm::vec2 origin{static_cast<float>(pos.x), static_cast<float>(pos.y)};
         auto &vertices = result[pos.z];
         for (size_t edge = 0; edge < neighbors.size(); ++edge) {
             const auto &delta = neighbors[edge];
-            if (map.findRoomHandle(Coordinate{pos.x + delta.x, pos.y + delta.y, pos.z})) {
+            if (const auto neighbor = map.findRoomHandle(
+                    Coordinate{pos.x + delta.x, pos.y + delta.y, pos.z});
+                neighbor && visibility.allows(neighbor)) {
                 continue;
             }
             const glm::vec2 normal{static_cast<float>(delta.x), static_cast<float>(delta.y)};

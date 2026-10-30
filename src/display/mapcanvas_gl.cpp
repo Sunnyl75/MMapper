@@ -514,12 +514,14 @@ void MapCanvas::updateBatches()
 
 void MapCanvas::updateMapBatches()
 {
+    const auto visibility = currentRoomVisibility();
     RemeshCookie &remeshCookie = m_batches.remeshCookie;
     if (remeshCookie.isPending()) {
         return;
     }
 
-    if (m_batches.mapBatches.has_value() && !m_data.getNeedsMapUpdate()) {
+    if (m_batches.mapBatches.has_value() && !m_data.getNeedsMapUpdate()
+        && m_batches.displayedVisibility.matches(visibility)) {
         return;
     }
 
@@ -529,12 +531,14 @@ void MapCanvas::updateMapBatches()
         MMLOG() << "[updateMapBatches] cleared 'needsUpdate' flag";
     }
 
-    auto getFuture = [this]() {
+    auto getFuture = [this, visibility]() {
         MMLOG() << "[updateMapBatches] calling generateBatches";
         return m_data.generateBatches(mctp::getProxy(m_textures),
-                                      getGLFont().getSharedFontMetrics());
+                                      getGLFont().getSharedFontMetrics(),
+                                      visibility);
     };
 
+    m_batches.buildingVisibility = visibility;
     remeshCookie.set(getFuture());
     assert(remeshCookie.isPending());
 
@@ -575,6 +579,12 @@ void MapCanvas::finishPendingMapBatches()
             return;
         }
 
+        if (!m_batches.buildingVisibility.canDisplayFor(currentRoomVisibility())) {
+            // Drain stale work without uploading or displaying another character's rooms.
+            m_frameManager.requestUpdate();
+            return;
+        }
+
         // REVISIT: should we pass a "fake" one and only swap to the correct one on success?
         LOG() << "Clearing the map batches and call the finisher to create new ones";
 
@@ -588,7 +598,9 @@ void MapCanvas::finishPendingMapBatches()
 
         // Swap immediately so this frame can use the new batches.
         m_batches.mapBatches = std::exchange(m_batches.next_mapBatches, std::nullopt);
+        m_batches.displayedVisibility = m_batches.buildingVisibility;
     } catch (...) {
+        m_batches.next_mapBatches.reset();
         QString msg;
         try {
             std::rethrow_exception(std::current_exception());
@@ -684,17 +696,26 @@ void MapCanvas::actuallyPaintGL()
             gl.clear(Color{getConfig().canvas.backgroundColor});
 
             if (m_data.isEmpty()) {
-                m_backgroundMap.render(gl, getCurrentLayer(), getViewProj(), m_data.getCurrentMap());
+                m_backgroundMap.render(gl,
+                                       getCurrentLayer(),
+                                       getViewProj(),
+                                       m_data.getCurrentMap(),
+                                       displayedRoomVisibility());
                 getGLFont().renderTextCentered("No map loaded");
             } else {
                 // Update animation state
                 m_weather.update();
 
                 paintMap();
-                paintBatchedInfomarks();
+                if (!getConfig().canvas.fogOfWarEnabled.get()) {
+                    // Free-standing annotations have no server room ID.
+                    paintBatchedInfomarks();
+                }
                 paintSelections();
                 paintCharacters();
-                paintDifferences();
+                if (!getConfig().canvas.fogOfWarEnabled.get()) {
+                    paintDifferences();
+                }
 
                 m_weather.prepare();
                 gl.getUboManager().bind(funcs, Legacy::SharedVboEnum::TimeBlock);
@@ -851,6 +872,20 @@ void MapCanvas::paintDifferences()
 void MapCanvas::paintMap()
 {
     const bool pending = m_batches.remeshCookie.isPending();
+    const auto visibility = currentRoomVisibility();
+    if (!m_batches.mapBatches || !m_batches.displayedVisibility.canDisplayFor(visibility)) {
+        if (visibility.enabled) {
+            m_backgroundMap.render(getOpenGL(),
+                                   getCurrentLayer(),
+                                   getViewProj(),
+                                   m_data.getCurrentMap(),
+                                   displayedRoomVisibility());
+            if (!visibility.known.complete) {
+                getGLFont().renderTextCentered("Waiting for known-room history...");
+            }
+            return;
+        }
+    }
 
     if (!m_batches.mapBatches.has_value()) {
         if (!pending || m_batches.pendingUpdateFlashState.tick()) {
@@ -868,7 +903,11 @@ void MapCanvas::paintMap()
     // TODO: add a GUI indicator for pending update?
     renderMapBatches();
 
-    if (pending) {
+    if (visibility.enabled && !visibility.known.complete) {
+        getGLFont().renderTextCentered("Waiting for known-room history...");
+    }
+
+    if (pending && !visibility.enabled) {
         if (m_batches.pendingUpdateFlashState.tick()) {
             const QString msg = "CAUTION: Async map update pending!";
             getGLFont().renderTextCentered(msg);
@@ -879,9 +918,11 @@ void MapCanvas::paintMap()
 void MapCanvas::paintSelections()
 {
     paintSelectedRooms();
-    paintSelectedConnection();
+    if (!getConfig().canvas.fogOfWarEnabled.get()) {
+        paintSelectedConnection();
+        paintSelectedInfomarks();
+    }
     paintSelectionArea();
-    paintSelectedInfomarks();
 }
 
 void MapCanvas::hostPaintGL()
@@ -1189,7 +1230,11 @@ void MapCanvas::renderMapBatches()
     const int currentLayer = getCurrentLayer();
     bool backgroundDrawn = false;
     const auto drawBackground = [&]() {
-        m_backgroundMap.render(gl, currentLayer, getViewProj(), m_data.getCurrentMap());
+        m_backgroundMap.render(gl,
+                               currentLayer,
+                               getViewProj(),
+                               m_data.getCurrentMap(),
+                               displayedRoomVisibility());
         backgroundDrawn = true;
     };
     for (const auto &layer : batchedMeshes) {

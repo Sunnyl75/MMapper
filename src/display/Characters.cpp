@@ -476,6 +476,10 @@ void MapCanvas::paintCharacters()
         if (const std::optional<RoomId> opt_pos = m_data.getCurrentRoomId()) {
             const auto &id = opt_pos.value();
             if (const auto room = m_data.findRoomHandle(id)) {
+                const auto visibility = currentRoomVisibility();
+                if (!visibility.allows(room)) {
+                    return;
+                }
                 const auto &pos = room.getPosition();
                 // draw the characters before the current position
                 characterBatch.incrementCount(pos);
@@ -487,7 +491,17 @@ void MapCanvas::paintCharacters()
                 characterBatch.drawCharacter(pos, color);
 
                 // paint prespam
-                const auto prespam = m_data.getPath(id, m_prespammedPath.getQueue());
+                auto prespam = m_data.getPath(id, m_prespammedPath.getQueue());
+                if (visibility.enabled) {
+                    const auto hidden
+                        = std::find_if(prespam.begin(),
+                                       prespam.end(),
+                                       [this, &visibility](const Coordinate coordinate) {
+                                           const auto target = m_data.findRoomHandle(coordinate);
+                                           return !target || !visibility.allows(target);
+                                       });
+                    prespam.erase(hidden, prespam.end());
+                }
                 characterBatch.drawPreSpammedPath(pos, prespam, color);
                 return;
             } else {
@@ -529,7 +543,7 @@ void MapCanvas::drawGroupCharacters(CharacterBatch &batch, ServerRoomId yourServ
         });
 
         // Do not draw the character if they're in an "Unknown" room
-        if (!r) {
+        if (!r || !currentRoomVisibility().allows(r)) {
             continue;
         }
 

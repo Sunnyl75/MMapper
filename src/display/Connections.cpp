@@ -231,6 +231,9 @@ void ConnectionDrawer::drawRoomDoorName(const RoomHandle &sourceRoom,
 
 void ConnectionDrawer::drawRoomConnectionsAndDoors(const RoomHandle &room)
 {
+    if (!m_visibility.allows(room)) {
+        return;
+    }
     const Map &map = room.getMap();
 
     // Ooops, this is wrong since we may reject a connection that would be visible
@@ -246,6 +249,9 @@ void ConnectionDrawer::drawRoomConnectionsAndDoors(const RoomHandle &room)
         if (sourceWithinBounds) {
             for (const RoomId outTargetId : sourceExit.getOutgoingSet()) {
                 const auto &targetRoom = map.getRoomHandle(outTargetId);
+                if (!m_visibility.allows(targetRoom)) {
+                    continue;
+                }
                 const auto &target_coord = targetRoom.getPosition();
                 const bool targetOutsideBounds = !m_bounds.contains(target_coord);
 
@@ -287,6 +293,9 @@ void ConnectionDrawer::drawRoomConnectionsAndDoors(const RoomHandle &room)
         // incoming connections
         for (const RoomId inTargetId : sourceExit.getIncomingSet()) {
             const auto &targetRoom = map.getRoomHandle(inTargetId);
+            if (!m_visibility.allows(targetRoom)) {
+                continue;
+            }
 
             // Only draw the connection if the target room is within the bounds
             const Coordinate target_coord = targetRoom.getPosition();

@@ -675,6 +675,7 @@ static constexpr const std::string_view DEFAULT_NO_SUNDEATH_COLOR = "#D4C7C7";
 void Configuration::CanvasSettings::read(const QSettings &conf)
 {
     backgroundMapEnabled.set(conf.value("BACKGROUND_MAP_ENABLED", false).toBool());
+    fogOfWarEnabled.set(conf.value("FOG_OF_WAR_ENABLED", false).toBool());
     backgroundMapFile.set(conf.value("BACKGROUND_MAP_FILE").toString());
     auto tileset = conf.value("BACKGROUND_MAP_TILESET", "builtin").toString();
     if (tileset != "builtin" && tileset != "foreground" && tileset != "custom") {
@@ -913,6 +914,7 @@ NODISCARD static auto getQColorName(const XNamedColor &color)
 void Configuration::CanvasSettings::write(QSettings &conf) const
 {
     conf.setValue("BACKGROUND_MAP_ENABLED", backgroundMapEnabled.get());
+    conf.setValue("FOG_OF_WAR_ENABLED", fogOfWarEnabled.get());
     conf.setValue("BACKGROUND_MAP_FILE", backgroundMapFile.get());
     conf.setValue("BACKGROUND_MAP_TILESET", backgroundMapTileset.get());
     conf.setValue("BACKGROUND_MAP_TILES_DIRECTORY", backgroundMapTilesDirectory.get());

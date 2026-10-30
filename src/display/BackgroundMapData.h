@@ -4,6 +4,7 @@
 
 #include "../map/Map.h"
 #include "../opengl/OpenGLTypes.h"
+#include "RoomVisibility.h"
 
 #include <map>
 #include <memory>
@@ -36,7 +37,9 @@ NODISCARD QStringList textureFiles(const QString &tileset, const QString &direct
 NODISCARD std::vector<QImage> loadTextures(const QStringList &files,
                                            bool soften,
                                            ProgressCounter &progress);
-NODISCARD ShadowGeometry buildShadow(const Map &map, ProgressCounter &progress);
+NODISCARD ShadowGeometry buildShadow(const Map &map,
+                                     ProgressCounter &progress,
+                                     const RoomVisibility &visibility = {});
 NODISCARD bool isChunkVisible(ChunkKey key, const glm::mat4 &viewProjection);
 
 } // namespace backgroundmap

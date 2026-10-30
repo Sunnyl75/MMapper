@@ -70,6 +70,10 @@ set(mmapper_SRCS
     display/BackgroundMapLoader.cpp
     preferences/BackgroundMapPage.cpp
     preferences/BackgroundMapPage.h
+    preferences/FogOfWarPage.cpp
+    preferences/FogOfWarPage.h
+    display/FogOfWar.cpp
+    display/RoomVisibility.h
     display/CanvasMouseModeEnum.h
     display/Characters.cpp
     display/Characters.h

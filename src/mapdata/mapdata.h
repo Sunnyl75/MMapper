@@ -6,6 +6,7 @@
 // Author: Nils Schimmelmann <nschimme@gmail.com> (Jahara)
 
 #include "../display/IMapBatchesFinisher.h"
+#include "../display/RoomVisibility.h"
 #include "../map/Changes.h"
 #include "../map/DoorFlags.h"
 #include "../map/ExitDirection.h"
@@ -71,7 +72,8 @@ public:
 
     NODISCARD FutureSharedMapBatchFinisher
     generateBatches(const mctp::MapCanvasTexturesProxy &textures,
-                    const std::shared_ptr<const FontMetrics> &font);
+                    const std::shared_ptr<const FontMetrics> &font,
+                    const RoomVisibility &visibility = {});
 
     // REVISIT: convert to template, or functionref after it compiles everywhere?
     void applyChangesToList(const RoomSelection &sel,

@@ -17,6 +17,7 @@
 #include "MapBatches.h"
 #include "MapCanvasData.h"
 #include "RoadIndex.h"
+#include "RoomVisibility.h"
 
 #include <map>
 #include <optional>
@@ -123,6 +124,8 @@ struct NODISCARD Batches final
     RemeshCookie remeshCookie;
     std::optional<MapBatches> next_mapBatches;
     std::optional<MapBatches> mapBatches;
+    RoomVisibility buildingVisibility;
+    RoomVisibility displayedVisibility;
     std::optional<BatchedInfomarksMeshes> infomarksMeshes;
     struct NODISCARD FlashState final
     {
@@ -177,7 +180,8 @@ struct NODISCARD Batches final
 NODISCARD FutureSharedMapBatchFinisher
 generateMapDataFinisher(const mctp::MapCanvasTexturesProxy &textures,
                         const std::shared_ptr<const FontMetrics> &font,
-                        const Map &map);
+                        const Map &map,
+                        const RoomVisibility &visibility = {});
 
 extern void finish(const IMapBatchesFinisher &finisher,
                    std::optional<MapBatches> &batches,

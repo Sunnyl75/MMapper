@@ -109,6 +109,26 @@ private slots:
         QVERIFY(backgroundmap::isChunkVisible({2, 0, 0}, projection));
     }
 
+    void fogShadowsOnlyComeFromKnownRooms()
+    {
+        ProgressCounter pc;
+        auto a = room(0, Coordinate{0, 0, 0});
+        auto b = room(1, Coordinate{1, 0, 0});
+        a.setServerId(ServerRoomId{1});
+        b.setServerId(ServerRoomId{2});
+        const auto map = Map::fromRooms(pc, {a, b}, {}).modified;
+        RoomVisibility visibility{true, {}};
+        QVERIFY(backgroundmap::buildShadow(map, pc, visibility).empty());
+        visibility.known.complete = true;
+        visibility.known.rooms.insert(ServerRoomId{1});
+        const auto one = backgroundmap::buildShadow(map, pc, visibility);
+        QCOMPARE(one.at(0).size(), size_t{16});
+        visibility.known.rooms.insert(ServerRoomId{2});
+        const auto both = backgroundmap::buildShadow(map, pc, visibility);
+        QCOMPARE(both.at(0).size(), size_t{24});
+        QCOMPARE(map.getRoomsCount(), size_t{2});
+    }
+
     void tileImagesAreCachedAndSofteningIsOptional()
     {
         QTemporaryDir directory;

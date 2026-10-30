@@ -16,6 +16,15 @@ set_target_properties(TestBackgroundMap PROPERTIES
     COMPILE_FLAGS "${WARNING_FLAGS}")
 add_test(NAME TestBackgroundMap COMMAND TestBackgroundMap)
 
+add_executable(TestFogOfWar TestFogOfWar.cpp
+    ../src/preferences/FogOfWarPage.cpp ../src/preferences/FogOfWarPage.h)
+target_link_libraries(TestFogOfWar PRIVATE mm_map mm_test mm_global
+    Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test coverage_config)
+set_target_properties(TestFogOfWar PROPERTIES
+    CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
+    COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestFogOfWar COMMAND TestFogOfWar)
+
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
 )

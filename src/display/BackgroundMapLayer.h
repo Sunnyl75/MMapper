@@ -33,6 +33,7 @@ private:
     std::vector<QImage> m_images;
     backgroundmap::ShadowGeometry m_shadow;
     std::optional<Map> m_shadowMap;
+    RoomVisibility m_shadowVisibility;
     bool m_geometryDirty = true;
     bool m_texturesDirty = true;
     bool m_shadowDirty = true;
@@ -48,13 +49,17 @@ public:
 
     void start();
     // Both rendering and cleanup require the canvas's current GL context.
-    void render(OpenGL &gl, int layer, const glm::mat4 &viewProjection, const Map &foreground);
+    void render(OpenGL &gl,
+                int layer,
+                const glm::mat4 &viewProjection,
+                const Map &foreground,
+                const RoomVisibility &visibility = {});
     void cleanupGL(OpenGL &gl);
 
 private:
     void reloadMap();
     void reloadTextures();
-    void updateShadow(const Map &foreground);
+    void updateShadow(const Map &foreground, const RoomVisibility &visibility);
     void uploadTextures(OpenGL &gl);
 
 signals:

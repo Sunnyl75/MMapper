@@ -898,7 +898,8 @@ static void generateAllLayerMeshes(InternalData &internalData,
                                    const FontMetrics &font,
                                    const LayerToRooms &layerToRooms,
                                    const mctp::MapCanvasTexturesProxy &textures,
-                                   const VisitRoomOptions &visitRoomOptions)
+                                   const VisitRoomOptions &visitRoomOptions,
+                                   const RoomVisibility &visibility)
 
 {
     // This feature has been removed, but it's passed to a lot of functions,
@@ -931,7 +932,7 @@ static void generateAllLayerMeshes(InternalData &internalData,
             cdb.clear();
             rnb.clear();
 
-            ConnectionDrawer cd{cdb, rnb, thisLayer, bounds};
+            ConnectionDrawer cd{cdb, rnb, thisLayer, bounds, visibility};
             {
                 DECL_TIMER(t7, "generateAllLayerMeshes.loop.part3b");
                 // pass 2: add to buffers
@@ -1120,12 +1121,17 @@ void InternalData::virt_finish(MapBatches &output, OpenGL &gl, GLFont &font) con
 // NOTE: All of the lamda captures are copied, including the texture data!
 FutureSharedMapBatchFinisher generateMapDataFinisher(const mctp::MapCanvasTexturesProxy &textures,
                                                      const std::shared_ptr<const FontMetrics> &font,
-                                                     const Map &map)
+                                                     const Map &map,
+                                                     const RoomVisibility &visibility)
 {
     const auto visitRoomOptions = getVisitRoomOptions();
 
     return std::async(std::launch::async,
-                      [textures, font, map, visitRoomOptions]() -> SharedMapBatchFinisher {
+                      [textures, font, map, visitRoomOptions, visibility]()
+                          -> SharedMapBatchFinisher {
+                          if (visibility.hidesAllRooms()) {
+                              return SharedMapBatchFinisher{std::make_shared<InternalData>()};
+                          }
                           ThreadLocalNamedColorRaii tlRaii{visitRoomOptions.canvasColors,
                                                            visitRoomOptions.colorSettings};
                           DECL_TIMER(t, "[ASYNC] generateAllLayerMeshes");
@@ -1133,11 +1139,14 @@ FutureSharedMapBatchFinisher generateMapDataFinisher(const mctp::MapCanvasTextur
                           ProgressCounter dummyPc;
                           map.checkConsistency(dummyPc);
 
-                          const auto layerToRooms = std::invoke([map]() -> LayerToRooms {
+                          const auto layerToRooms = std::invoke([map, visibility]() -> LayerToRooms {
                               DECL_TIMER(t2, "[ASYNC] generateBatches.layerToRooms");
                               LayerToRooms ltr;
-                              map.getRooms().for_each([&map, &ltr](const RoomId id) {
+                              map.getRooms().for_each([&map, &ltr, &visibility](const RoomId id) {
                                   const auto &r = map.getRoomHandle(id);
+                                  if (!visibility.allows(r)) {
+                                      return;
+                                  }
                                   const auto z = r.getPosition().z;
                                   auto &layer = ltr[z];
                                   layer.emplace_back(r);
@@ -1151,7 +1160,8 @@ FutureSharedMapBatchFinisher generateMapDataFinisher(const mctp::MapCanvasTextur
                                                  deref(font),
                                                  layerToRooms,
                                                  textures,
-                                                 visitRoomOptions);
+                                                 visitRoomOptions,
+                                                 visibility);
                           return SharedMapBatchFinisher{result};
                       });
 }

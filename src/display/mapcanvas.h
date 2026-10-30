@@ -201,6 +201,7 @@ private:
     Signal2Lifetime m_lifetime;
     GLWeather m_weather;
     BackgroundMapLayer m_backgroundMap;
+    RoomVisibility m_selectionVisibility;
     bool m_cleanedUp = false;
 
     // Deferred (defer-to-next-render) state for GL work that historically ran
@@ -347,6 +348,10 @@ public:
     void applyPendingGLWork();
     void actuallyPaintGL();
     void paintMap();
+    void initFogOfWar();
+    void fogOfWarChanged();
+    NODISCARD RoomVisibility currentRoomVisibility() const;
+    NODISCARD RoomVisibility displayedRoomVisibility() const;
     void renderMapBatches();
     void paintBatchedInfomarks();
     void paintSelections();

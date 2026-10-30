@@ -170,14 +170,16 @@ void BackgroundMapLayer::reloadTextures()
         });
 }
 
-void BackgroundMapLayer::updateShadow(const Map &foreground)
+void BackgroundMapLayer::updateShadow(const Map &foreground, const RoomVisibility &visibility)
 {
-    if (m_shadowMap && m_shadowMap->isSamePointer(foreground)) {
+    if (m_shadowMap && m_shadowMap->isSamePointer(foreground)
+        && m_shadowVisibility.matches(visibility)) {
         return;
     }
     cancel(m_shadowTask);
     const auto generation = ++m_shadowGeneration;
     m_shadowMap = foreground;
+    m_shadowVisibility = visibility;
     m_shadow.clear();
     m_shadowDirty = true;
     auto result = std::make_shared<backgroundmap::ShadowGeometry>();
@@ -186,8 +188,8 @@ void BackgroundMapLayer::updateShadow(const Map &foreground)
         AsyncTaskTypeEnum::Task,
         AllowCancelEnum::Allow,
         "Prepare foreground boundary shadow",
-        [foreground, result](ProgressCounter &pc) {
-            *result = backgroundmap::buildShadow(foreground, pc);
+        [foreground, visibility, result](ProgressCounter &pc) {
+            *result = backgroundmap::buildShadow(foreground, pc, visibility);
         },
         [self, generation, result]() {
             if (!self || generation != self->m_shadowGeneration) {
@@ -238,7 +240,8 @@ void BackgroundMapLayer::uploadTextures(OpenGL &gl)
 void BackgroundMapLayer::render(OpenGL &gl,
                                 const int layer,
                                 const glm::mat4 &viewProjection,
-                                const Map &foreground)
+                                const Map &foreground,
+                                const RoomVisibility &visibility)
 {
     const auto &settings = getConfig().canvas;
     if (!settings.backgroundMapEnabled.get()) {
@@ -272,7 +275,7 @@ void BackgroundMapLayer::render(OpenGL &gl,
     if (settings.backgroundMapShadow.get()) {
         // Foreground changes invalidate only this small boundary cache. They
         // never touch the background geometry, images, textures or meshes.
-        updateShadow(foreground);
+        updateShadow(foreground, visibility);
         if (std::exchange(m_shadowDirty, false)) {
             m_shadowMeshes.clear();
         }

@@ -12,6 +12,7 @@
 #include "../map/roomid.h"
 #include "../opengl/Font.h"
 #include "../opengl/OpenGLTypes.h"
+#include "RoomVisibility.h"
 
 #include <algorithm>
 #include <cassert>
@@ -157,17 +158,20 @@ private:
     RoomNameBatch &m_roomNameBatch;
     const OptBounds &m_bounds;
     const int m_currentLayer;
+    const RoomVisibility &m_visibility;
 
 public:
     explicit ConnectionDrawer(ConnectionDrawerBuffers &buffers,
                               RoomNameBatch &roomNameBatch,
                               const int currentLayer,
-                              const OptBounds &bounds)
+                              const OptBounds &bounds,
+                              const RoomVisibility &visibility)
         : m_fake{buffers}
         , m_buffers{buffers}
         , m_roomNameBatch{roomNameBatch}
         , m_bounds{bounds}
         , m_currentLayer{currentLayer}
+        , m_visibility{visibility}
     {
         assert(m_buffers.empty());
         assert(m_roomNameBatch.empty());

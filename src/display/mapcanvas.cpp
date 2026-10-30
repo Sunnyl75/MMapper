@@ -88,6 +88,7 @@ MapCanvas::MapCanvas(MapData &mapData,
         emit sig_log(QStringLiteral("BackgroundMap"), message);
     });
     syncViewportConfig();
+    initFogOfWar();
 
     m_longPressTimer.setSingleShot(true);
     m_longPressTimer.setInterval(LONG_PRESS_MS);
@@ -172,6 +173,17 @@ void MapCanvas::slot_setRoomSelection(const SigRoomSelection &selection)
         auto &sel = deref(m_roomSelection);
         auto &map = m_data;
         sel.removeMissing(map);
+        if (const auto visibility = currentRoomVisibility(); visibility.enabled) {
+            std::vector<RoomId> hidden;
+            for (const auto id : sel) {
+                if (const auto room = map.findRoomHandle(id); !room || !visibility.allows(room)) {
+                    hidden.push_back(id);
+                }
+            }
+            for (const auto id : hidden) {
+                sel.erase(id);
+            }
+        }
 
         qDebug() << "Updated selection with" << sel.size() << "rooms";
         if (sel.size() == 1) {
@@ -185,20 +197,25 @@ void MapCanvas::slot_setRoomSelection(const SigRoomSelection &selection)
     }
 
     // Let the MainWindow know
-    emit sig_newRoomSelection(selection);
+    if (m_roomSelection && m_roomSelection->empty()) {
+        m_roomSelection.reset();
+    }
+    emit sig_newRoomSelection(SigRoomSelection{m_roomSelection});
     selectionChanged();
 }
 
 void MapCanvas::slot_setConnectionSelection(const std::shared_ptr<ConnectionSelection> &selection)
 {
-    m_connectionSelection = selection;
-    emit sig_newConnectionSelection(selection.get());
+    m_connectionSelection = currentRoomVisibility().enabled ? nullptr : selection;
+    emit sig_newConnectionSelection(m_connectionSelection.get());
     selectionChanged();
 }
 
 void MapCanvas::slot_setInfomarkSelection(const std::shared_ptr<InfomarkSelection> &selection)
 {
-    if (m_canvasMouseMode == CanvasMouseModeEnum::CREATE_INFOMARKS) {
+    if (currentRoomVisibility().enabled) {
+        m_infoMarkSelection = nullptr;
+    } else if (m_canvasMouseMode == CanvasMouseModeEnum::CREATE_INFOMARKS) {
         m_infoMarkSelection = selection;
 
     } else if (selection == nullptr || selection->empty()) {
@@ -408,6 +425,10 @@ void MapCanvas::slot_createRoom()
 // REVISIT: This function doesn't need to return a shared ptr. Consider refactoring InfomarkSelection?
 std::shared_ptr<InfomarkSelection> MapCanvas::getInfomarkSelection(const MouseSel &sel)
 {
+    if (currentRoomVisibility().enabled) {
+        const auto pos = sel.getScaledCoordinate(INFOMARK_SCALE);
+        return InfomarkSelection::allocEmpty(m_data, pos, pos);
+    }
     static constexpr float CLICK_RADIUS = 10.f;
 
     const auto center = sel.to_vec3();

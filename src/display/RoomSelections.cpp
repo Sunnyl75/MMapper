@@ -174,6 +174,9 @@ void MapCanvas::paintSelectedRooms()
 
     for (const RoomId id : deref(m_roomSelection)) {
         if (const auto room = m_data.findRoomHandle(id)) {
+            if (!currentRoomVisibility().allows(room)) {
+                continue;
+            }
             gl.resetMatrix();
             paintSelectedRoom(gl, room.getRaw());
         }
