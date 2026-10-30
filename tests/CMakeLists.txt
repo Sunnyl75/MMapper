@@ -183,6 +183,8 @@ set(map_scroller_SRCS
 )
 # MainWindow
 set(mainwindow_SRCS
+    ../src/preferences/UndiscoveredRoomsDialog.cpp
+    ../src/preferences/UndiscoveredRoomsDialog.h
     ../src/global/Version.h
     ../src/mainwindow/AudioVolumeSlider.cpp
     ../src/mainwindow/AudioVolumeSlider.h

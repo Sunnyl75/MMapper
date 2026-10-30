@@ -561,6 +561,8 @@ set(mmapper_SRCS
     preferences/clientpage.h
     preferences/generalpage.cpp
     preferences/generalpage.h
+    preferences/UndiscoveredRoomsDialog.cpp
+    preferences/UndiscoveredRoomsDialog.h
     preferences/graphicspage.cpp
     preferences/graphicspage.h
     preferences/grouppage.cpp

@@ -193,6 +193,7 @@ Proxy::Proxy(Badge<Proxy>,
 
 Proxy::~Proxy()
 {
+    m_gameObserver.setKnownRoomsConsumerEnabled(QStringLiteral("undiscovered-rooms"), false);
     m_gameObserver.resetKnownRooms();
     // This can happen as a result of the user hitting Alt-F4 to close the MMapper window.
     sendNewlineToUser();
@@ -889,6 +890,12 @@ void Proxy::init()
     m_gameObserver.sig2_requestKnownRooms.connect(m_lifetime, [this]() {
         getMudTelnet().onGmcpToMud(GmcpMessage{GmcpMessageTypeEnum::ROOM_KNOWN_LIST});
     });
+    setConfig().canvas.showUndiscoveredRooms.registerChangeCallback(m_lifetime, [this]() {
+        m_gameObserver.setKnownRoomsConsumerEnabled(QStringLiteral("undiscovered-rooms"),
+                                                    getConfig().canvas.showUndiscoveredRooms.get());
+    });
+    m_gameObserver.setKnownRoomsConsumerEnabled(QStringLiteral("undiscovered-rooms"),
+                                                getConfig().canvas.showUndiscoveredRooms.get());
 
     log("Connection to client established ...");
     sendWelcomeToUser();
