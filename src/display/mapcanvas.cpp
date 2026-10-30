@@ -200,7 +200,8 @@ void MapCanvas::slot_setRoomSelection(const SigRoomSelection &selection)
     if (m_roomSelection && m_roomSelection->empty()) {
         m_roomSelection.reset();
     }
-    emit sig_newRoomSelection(SigRoomSelection{m_roomSelection});
+    emit sig_newRoomSelection(m_roomSelection ? SigRoomSelection{m_roomSelection}
+                                              : SigRoomSelection{});
     selectionChanged();
 }
 
