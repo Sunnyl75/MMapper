@@ -1022,7 +1022,12 @@ void LayerMeshes::render(const int thisLayer, const int focusedLayer)
     const GLRenderState equal_blended = equal.withBlend(BlendModeEnum::TRANSPARENCY);
     const GLRenderState equal_multiplied = equal.withBlend(BlendModeEnum::MODULATE);
 
-    const auto color = (thisLayer <= focusedLayer) ? Colors::white.withAlpha(0.90f)
+    const auto &canvas = getConfig().canvas;
+    const float foregroundAlpha = thisLayer == focusedLayer && canvas.backgroundMapEnabled.get()
+                                          && canvas.backgroundMapOpacity.get() > 0
+                                      ? 1.f
+                                      : .90f;
+    const auto color = (thisLayer <= focusedLayer) ? Colors::white.withAlpha(foregroundAlpha)
                                                    : Colors::gray70.withAlpha(0.20f);
 
     {

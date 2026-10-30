@@ -7,6 +7,7 @@
 #include "configdialog.h"
 
 #include "../configuration/configuration.h"
+#include "BackgroundMapPage.h"
 #include "audiopage.h"
 #include "autologpage.h"
 #include "clientpage.h"
@@ -53,6 +54,7 @@ ConfigDialog::ConfigDialog(QWidget *const parent)
 
     auto generalPage = new GeneralPage(this);
     auto graphicsPage = new GraphicsPage(this);
+    auto backgroundMapPage = new BackgroundMapPage(this);
     auto parserPage = new ParserPage(this);
     auto clientPage = new ClientPage(this);
     auto groupPage = new GroupPage(this);
@@ -99,6 +101,7 @@ ConfigDialog::ConfigDialog(QWidget *const parent)
 
     addPage(generalPage, tr("General"), ":/icons/generalcfg.png");
     addPage(graphicsPage, tr("Graphics"), ":/icons/graphicscfg.png");
+    addPage(backgroundMapPage, tr("Background Map"), ":/icons/graphicscfg.png");
     addPage(parserPage, tr("Parser"), ":/icons/parsercfg.png");
     addPage(clientPage, tr("Game Client"), ":/icons/terminal.png");
     addPage(groupPage, tr("Group Panel"), ":/icons/group-recolor.png");
@@ -146,6 +149,10 @@ ConfigDialog::ConfigDialog(QWidget *const parent)
 
     connect(this, &ConfigDialog::sig_loadConfig, generalPage, &GeneralPage::slot_loadConfig);
     connect(this, &ConfigDialog::sig_loadConfig, graphicsPage, &GraphicsPage::slot_loadConfig);
+    connect(this,
+            &ConfigDialog::sig_loadConfig,
+            backgroundMapPage,
+            &BackgroundMapPage::slot_loadConfig);
     connect(this, &ConfigDialog::sig_loadConfig, parserPage, &ParserPage::slot_loadConfig);
     connect(this, &ConfigDialog::sig_loadConfig, clientPage, &ClientPage::slot_loadConfig);
     connect(this, &ConfigDialog::sig_loadConfig, autoLogPage, &AutoLogPage::slot_loadConfig);

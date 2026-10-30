@@ -178,6 +178,16 @@ public:
         // 100 the offscreen framebuffer shrinks accordingly (see
         // Legacy::Functions::setRenderScale()).
         NamedConfig<int> renderScale{"RENDER_SCALE", 100};
+        NamedConfig<bool> backgroundMapEnabled{"BACKGROUND_MAP_ENABLED", false};
+        NamedConfig<QString> backgroundMapFile{"BACKGROUND_MAP_FILE", {}};
+        NamedConfig<QString> backgroundMapTileset{"BACKGROUND_MAP_TILESET",
+                                                  QStringLiteral("builtin")};
+        NamedConfig<QString> backgroundMapTilesDirectory{"BACKGROUND_MAP_TILES_DIRECTORY", {}};
+        NamedConfig<int> backgroundMapOpacity{"BACKGROUND_MAP_OPACITY", 40};
+        NamedConfig<bool> backgroundMapSoften{"BACKGROUND_MAP_SOFTEN", true};
+        NamedConfig<bool> backgroundMapShadow{"BACKGROUND_MAP_SHADOW", true};
+        // Explicit reload trigger; never polled from disk or persisted.
+        NamedConfig<size_t> backgroundMapReload{"BACKGROUND_MAP_RELOAD", 0};
         NamedConfig<bool> trilinearFiltering{"TRILINEAR_FILTERING", true};
         NamedConfig<bool> showMissingMapId{"SHOW_MISSING_MAPID", false};
         NamedConfig<bool> showUnsavedChanges{"SHOW_UNSAVED_CHANGES", false};

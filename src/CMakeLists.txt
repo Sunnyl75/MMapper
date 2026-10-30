@@ -63,6 +63,13 @@ set(mmapper_SRCS
     configuration/PasswordConfig.h
     configuration/configuration.cpp
     configuration/configuration.h
+    display/BackgroundMapData.cpp
+    display/BackgroundMapData.h
+    display/BackgroundMapLayer.cpp
+    display/BackgroundMapLayer.h
+    display/BackgroundMapLoader.cpp
+    preferences/BackgroundMapPage.cpp
+    preferences/BackgroundMapPage.h
     display/CanvasMouseModeEnum.h
     display/Characters.cpp
     display/Characters.h

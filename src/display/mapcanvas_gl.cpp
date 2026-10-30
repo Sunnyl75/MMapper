@@ -130,6 +130,7 @@ void MapCanvas::hostCleanupGL()
     // note: m_batchedMeshes co-owns textures created by MapCanvasData,
     // and it also owns the lifetime of some OpenGL objects (e.g. VBOs).
     m_batches.resetExistingMeshesAndIgnorePendingRemesh();
+    m_backgroundMap.cleanupGL(getOpenGL());
     m_weather.cleanup();
     m_textures.destroyAll();
     getGLFont().cleanup();
@@ -343,6 +344,8 @@ bool MapCanvas::hostInitializeGL()
     font.setTextureId(allocateTextureId());
     font.init(currentLogicalDpi());
     updateTextures();
+
+    m_backgroundMap.start();
 
     // compile all shaders
     {
@@ -681,6 +684,7 @@ void MapCanvas::actuallyPaintGL()
             gl.clear(Color{getConfig().canvas.backgroundColor});
 
             if (m_data.isEmpty()) {
+                m_backgroundMap.render(gl, getCurrentLayer(), getViewProj(), m_data.getCurrentMap());
                 getGLFont().renderTextCentered("No map loaded");
             } else {
                 // Update animation state
@@ -1183,12 +1187,23 @@ void MapCanvas::renderMapBatches()
     };
 
     const int currentLayer = getCurrentLayer();
+    bool backgroundDrawn = false;
+    const auto drawBackground = [&]() {
+        m_backgroundMap.render(gl, currentLayer, getViewProj(), m_data.getCurrentMap());
+        backgroundDrawn = true;
+    };
     for (const auto &layer : batchedMeshes) {
         const int thisLayer = layer.first;
         if (thisLayer == currentLayer) {
             gl.clearDepth();
             fadeBackground();
+            drawBackground();
+        } else if (thisLayer > currentLayer && !backgroundDrawn) {
+            drawBackground();
         }
         drawLayer(thisLayer, currentLayer);
+    }
+    if (!backgroundDrawn) {
+        drawBackground();
     }
 }

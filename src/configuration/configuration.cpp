@@ -674,6 +674,17 @@ static constexpr const std::string_view DEFAULT_NO_SUNDEATH_COLOR = "#D4C7C7";
 
 void Configuration::CanvasSettings::read(const QSettings &conf)
 {
+    backgroundMapEnabled.set(conf.value("BACKGROUND_MAP_ENABLED", false).toBool());
+    backgroundMapFile.set(conf.value("BACKGROUND_MAP_FILE").toString());
+    auto tileset = conf.value("BACKGROUND_MAP_TILESET", "builtin").toString();
+    if (tileset != "builtin" && tileset != "foreground" && tileset != "custom") {
+        tileset = QStringLiteral("builtin");
+    }
+    backgroundMapTileset.set(tileset);
+    backgroundMapTilesDirectory.set(conf.value("BACKGROUND_MAP_TILES_DIRECTORY").toString());
+    backgroundMapOpacity.set(std::clamp(conf.value("BACKGROUND_MAP_OPACITY", 40).toInt(), 0, 100));
+    backgroundMapSoften.set(conf.value("BACKGROUND_MAP_SOFTEN", true).toBool());
+    backgroundMapShadow.set(conf.value("BACKGROUND_MAP_SHADOW", true).toBool());
     // REVISIT: Consider just using the "current" value of the named color object,
     // since we can assume they're initialized before the values are read.
     const auto lookupColor = [&conf](const char *const key, std::string_view def) {
@@ -901,6 +912,13 @@ NODISCARD static auto getQColorName(const XNamedColor &color)
 
 void Configuration::CanvasSettings::write(QSettings &conf) const
 {
+    conf.setValue("BACKGROUND_MAP_ENABLED", backgroundMapEnabled.get());
+    conf.setValue("BACKGROUND_MAP_FILE", backgroundMapFile.get());
+    conf.setValue("BACKGROUND_MAP_TILESET", backgroundMapTileset.get());
+    conf.setValue("BACKGROUND_MAP_TILES_DIRECTORY", backgroundMapTilesDirectory.get());
+    conf.setValue("BACKGROUND_MAP_OPACITY", std::clamp(backgroundMapOpacity.get(), 0, 100));
+    conf.setValue("BACKGROUND_MAP_SOFTEN", backgroundMapSoften.get());
+    conf.setValue("BACKGROUND_MAP_SHADOW", backgroundMapShadow.get());
     conf.setValue(KEY_RESOURCES_DIRECTORY, resourcesDirectory);
     conf.setValue(KEY_MAP_FONT_FAMILY, mapFontFamily.get());
     conf.setValue(KEY_MAP_FONT_SIZE, mapFontPointSize.get());

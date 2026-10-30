@@ -82,7 +82,11 @@ MapCanvas::MapCanvas(MapData &mapData,
     , m_host{host}
     , m_frameManager{[this]() { m_host.requestCanvasUpdate(); }, m_opengl.getUboManager()}
     , m_weather{m_opengl, m_data, m_textures, observer, m_frameManager}
+    , m_backgroundMap{[this]() { m_frameManager.requestUpdate(); }}
 {
+    connect(&m_backgroundMap, &BackgroundMapLayer::sig_log, this, [this](const QString &message) {
+        emit sig_log(QStringLiteral("BackgroundMap"), message);
+    });
     syncViewportConfig();
 
     m_longPressTimer.setSingleShot(true);

@@ -14,6 +14,7 @@
 #include "../opengl/FontFormatFlags.h"
 #include "../opengl/OpenGL.h"
 #include "../opengl/Weather.h"
+#include "BackgroundMapLayer.h"
 #include "FrameManager.h"
 #include "Infomarks.h"
 #include "MapCanvasConfig.h"
@@ -199,6 +200,7 @@ private:
     std::unique_ptr<QOpenGLDebugLogger> m_logger;
     Signal2Lifetime m_lifetime;
     GLWeather m_weather;
+    BackgroundMapLayer m_backgroundMap;
     bool m_cleanedUp = false;
 
     // Deferred (defer-to-next-render) state for GL work that historically ran
