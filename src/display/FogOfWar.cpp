@@ -25,6 +25,13 @@ void MapCanvas::fogOfWarChanged()
     const auto visibility = currentRoomVisibility();
     if (visibility.enabled != m_selectionVisibility.enabled
         || visibility.known.generation != m_selectionVisibility.known.generation) {
+        if (visibility.enabled != m_selectionVisibility.enabled) {
+            m_fogGameplayZoom.reset();
+        } else if (!m_fogAwaitingPlayer) {
+            // During an interrupted arrival, the raw zoom still belongs to
+            // the opening view; keep the animation's gameplay destination.
+            m_fogGameplayZoom = m_fogCamera ? m_fogCamera->toScale : getRawZoom();
+        }
         m_fogAwaitingPlayer = true;
         m_fogPlayerLocated = false;
         m_fogCamera.reset();
@@ -55,6 +62,10 @@ void MapCanvas::updateFogOfWarView()
     const auto visibility = currentRoomVisibility();
     if (!visibility.enabled) {
         return;
+    }
+    if (!m_fogGameplayZoom) {
+        // Capture before browsing the opening view can change the raw zoom.
+        m_fogGameplayZoom = getRawZoom();
     }
     if (m_fogAwaitingPlayer && getConfig().canvas.backgroundMapEnabled.get()) {
         // Surface terrain supplies the opening view even if a previous session
@@ -93,10 +104,11 @@ void MapCanvas::updateFogOfWarView()
             m_fogCamera = FogOfWarCamera{getScroll(),
                                          destination.to_vec2() + glm::vec2{0.5f},
                                          getTotalScaleFactor(),
-                                         getRawZoom()};
+                                         *m_fogGameplayZoom};
             m_fogCameraClock.start();
             m_frameManager.requestUpdate();
         } else {
+            setZoom(*m_fogGameplayZoom);
             onMovement();
         }
     }
@@ -108,8 +120,10 @@ void MapCanvas::updateFogOfWarView()
         setTemporaryScale(pose.scale);
         emit sig_onCenter(pose.center);
         if (fraction >= 1.f) {
+            // Commit the gameplay zoom before removing the presentation scale.
+            // Otherwise a manual overview zoom would reappear after arrival.
+            setZoom(m_fogCamera->toScale);
             m_fogCamera.reset();
-            setTemporaryScale(std::nullopt);
             onMovement();
         }
         return;

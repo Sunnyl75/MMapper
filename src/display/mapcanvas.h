@@ -206,6 +206,7 @@ private:
     RoomVisibility m_selectionVisibility;
     bool m_fogAwaitingPlayer = true;
     bool m_fogPlayerLocated = false;
+    std::optional<float> m_fogGameplayZoom;
     std::optional<backgroundmap::Bounds> m_fogOverviewBounds;
     glm::ivec2 m_fogOverviewSize{0};
     std::optional<FogOfWarCamera> m_fogCamera;
