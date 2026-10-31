@@ -462,7 +462,7 @@ glm::ivec2 GLFont::getScreenCenter() const
     return m_gl.getPhysicalViewport().offset + m_gl.getPhysicalViewport().size / 2;
 }
 
-void GLFont::render2dTextImmediate(const View<GLText> text)
+void GLFont::render2dTextImmediate(const View<GLText> text, const float scale, const bool bold)
 {
     if (text.empty()) {
         return;
@@ -479,7 +479,27 @@ void GLFont::render2dTextImmediate(const View<GLText> text)
 
     const auto oldProj = m_gl.getProjectionMatrix();
     m_gl.setProjectionMatrix(viewProj);
-    render3dTextImmediate(text);
+    if (bold || !utils::isSameFloat(scale, 1.f)) {
+        auto vertices = getFontMeshIntermediate(text);
+        for (auto &vertex : vertices) {
+            vertex.vert *= scale;
+        }
+        if (bold) {
+            // Synthetic emboldening reuses the atlas and keeps the run centered.
+            const float stroke = 0.65f * m_gl.getDevicePixelRatio();
+            const auto count = vertices.size();
+            vertices.reserve(count * 2);
+            for (size_t i = 0; i < count; ++i) {
+                auto copy = vertices[i];
+                vertices[i].vert.x -= stroke * 0.5f;
+                copy.vert.x += stroke * 0.5f;
+                vertices.push_back(copy);
+            }
+        }
+        render3dTextImmediate(vertices);
+    } else {
+        render3dTextImmediate(text);
+    }
     m_gl.setProjectionMatrix(oldProj);
 }
 

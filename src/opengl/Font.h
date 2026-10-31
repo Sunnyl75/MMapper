@@ -98,7 +98,8 @@ public:
     void renderTextCentered(const QString &text,
                             Color color = {},
                             std::optional<Color> bgcolor = {});
-    void render2dTextImmediate(View<GLText> text);
+    // Styling applies only to this draw; cached map labels keep their own size.
+    void render2dTextImmediate(View<GLText> text, float scale = 1.f, bool bold = false);
     void render3dTextImmediate(View<GLText> text);
     void render3dTextImmediate(View<FontVert3d> rawVerts);
 

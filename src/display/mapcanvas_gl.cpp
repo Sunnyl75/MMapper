@@ -874,15 +874,20 @@ static void renderFogOfWarMessage(GLFont &font, OpenGL &gl)
 {
     const auto &viewport = gl.getPhysicalViewport();
     const auto center = glm::vec2{viewport.offset + viewport.size / 2};
-    const float spacing = static_cast<float>(font.getFontHeight()) * 1.5f;
+    const float spacing = static_cast<float>(font.getFontHeight()) * 1.8f;
     const FontFormatFlags alignment{FontFormatFlagEnum::HALIGN_CENTER};
+    // Text positions use physical pixels with the origin at the upper left.
+    font.render2dTextImmediate(std::vector<GLText>{GLText{glm::vec3{center.x,
+                                                                    center.y - spacing / 2.f,
+                                                                    0.f},
+                                                          "Fog of War mode",
+                                                          {},
+                                                          {},
+                                                          alignment}},
+                               1.2f,
+                               true);
     font.render2dTextImmediate(
         std::vector<GLText>{GLText{glm::vec3{center.x, center.y + spacing / 2.f, 0.f},
-                                   "Fog of War mode",
-                                   {},
-                                   {},
-                                   alignment},
-                            GLText{glm::vec3{center.x, center.y - spacing / 2.f, 0.f},
                                    "Your map awaits your entry into Arda.",
                                    {},
                                    {},
