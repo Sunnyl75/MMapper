@@ -33,7 +33,8 @@ public:
 
         NODISCARD bool isKnown(const ServerRoomId id) const
         {
-            return complete && id != INVALID_SERVER_ROOMID && rooms.contains(id);
+            // Positive evidence is usable while the complete history is loading.
+            return id != INVALID_SERVER_ROOMID && rooms.contains(id);
         }
 
         NODISCARD bool isUndiscovered(const ServerRoomId id) const

@@ -1407,6 +1407,8 @@ void MapCanvas::layerChanged()
 
 void MapCanvas::forceUpdateMeshes()
 {
+    m_enteredRoomMeshes.reset();
+    m_enteredRoomMap.reset();
     m_batches.resetExistingMeshesAndIgnorePendingRemesh();
     m_diff.resetExistingMeshesAndIgnorePendingRemesh();
     m_frameManager.requestUpdate();

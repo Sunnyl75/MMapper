@@ -204,6 +204,9 @@ private:
     GLWeather m_weather;
     BackgroundMapLayer m_backgroundMap;
     RoomVisibility m_selectionVisibility;
+    std::optional<Map> m_enteredRoomMap;
+    RoomId m_enteredRoomId = INVALID_ROOMID;
+    std::optional<LayerMeshes> m_enteredRoomMeshes;
     bool m_fogAwaitingPlayer = true;
     bool m_fogPlayerLocated = false;
     std::optional<float> m_fogGameplayZoom;
@@ -360,6 +363,7 @@ public:
     void initFogOfWar();
     void fogOfWarChanged();
     void updateFogOfWarView();
+    void renderEnteredRoom();
     NODISCARD RoomVisibility currentRoomVisibility() const;
     NODISCARD RoomVisibility displayedRoomVisibility() const;
     void renderMapBatches();

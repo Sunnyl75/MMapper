@@ -183,6 +183,12 @@ generateMapDataFinisher(const mctp::MapCanvasTexturesProxy &textures,
                         const Map &map,
                         const RoomVisibility &visibility = {});
 
+// Bounded GUI-thread work for the entered room while full async batches catch up.
+// Uses the ordinary room renderer and does not scan the rest of the map.
+NODISCARD LayerMeshes generateEnteredRoomMeshes(const RoomHandle &room,
+                                                const mctp::MapCanvasTexturesProxy &textures,
+                                                OpenGL &gl);
+
 extern void finish(const IMapBatchesFinisher &finisher,
                    std::optional<MapBatches> &batches,
                    OpenGL &gl,

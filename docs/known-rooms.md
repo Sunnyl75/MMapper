@@ -1,7 +1,8 @@
 # Shared known-room tracking
 
 `GameObserver` owns one `KnownRooms` instance per connection. It receives GMCP
-`Room.Known.List`, `Room.Known.Add` and `Room.Known.Updated`, and publishes cheap
+`Room.Known.List`, `Room.Known.Add`, `Room.Known.Updated` and the current-room
+`Room.Info` message, and publishes cheap
 immutable snapshots through `getKnownRooms()` and `sig2_knownRoomsChanged`.
 
 Display features register a stable, unique consumer name with
@@ -11,9 +12,11 @@ consumer leaves tracking enabled for the others. A consumer must unregister
 when disabled or destroyed. The foundation contains no red-dot or fog-of-war
 display setting.
 
-`Snapshot::isKnown(serverId)` and `Snapshot::isUndiscovered(serverId)` both
-require a usable completed history and a valid server ID. An incomplete
-transfer is not evidence that a room is unknown. Never infer discovery from
+`Snapshot::isKnown(serverId)` accepts positive evidence from `Room.Info` and
+`Room.Known.Add` immediately, even while history is loading. Only
+`Snapshot::isUndiscovered(serverId)` requires a completed history: an incomplete
+transfer is not evidence that a room is unknown. Both require a valid server ID.
+Entered rooms survive stale list/cache responses. Never infer discovery from
 the player's route, map presence, room coordinates or another character.
 
 The existing versioned cache remains under the application data directory's

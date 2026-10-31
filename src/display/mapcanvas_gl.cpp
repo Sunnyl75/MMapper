@@ -130,6 +130,8 @@ void MapCanvas::hostCleanupGL()
     // note: m_batchedMeshes co-owns textures created by MapCanvasData,
     // and it also owns the lifetime of some OpenGL objects (e.g. VBOs).
     m_batches.resetExistingMeshesAndIgnorePendingRemesh();
+    m_enteredRoomMeshes.reset();
+    m_enteredRoomMap.reset();
     m_backgroundMap.cleanupGL(getOpenGL());
     m_weather.cleanup();
     m_textures.destroyAll();
@@ -908,6 +910,7 @@ void MapCanvas::paintMap()
             if (!visibility.known.complete) {
                 renderFogOfWarMessage(getGLFont(), getOpenGL());
             }
+            renderEnteredRoom();
             return;
         }
     }
@@ -927,6 +930,7 @@ void MapCanvas::paintMap()
 
     // TODO: add a GUI indicator for pending update?
     renderMapBatches();
+    renderEnteredRoom();
 
     if (visibility.enabled && !visibility.known.complete) {
         renderFogOfWarMessage(getGLFont(), getOpenGL());

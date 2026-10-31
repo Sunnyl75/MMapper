@@ -10,6 +10,34 @@ RoomVisibility MapCanvas::currentRoomVisibility() const
     return RoomVisibility{getConfig().canvas.fogOfWarEnabled.get(), m_observer.getKnownRooms()};
 }
 
+void MapCanvas::renderEnteredRoom()
+{
+    // A render cache, not a second discovery model. Membership comes exclusively
+    // from GameObserver's shared KnownRooms snapshot, including Room.Info evidence.
+    const auto visibility = currentRoomVisibility();
+    const auto room = m_data.getCurrentRoom();
+    const bool alreadyDrawn = m_batches.mapBatches
+                              && m_batches.displayedVisibility.canDisplayFor(visibility) && room
+                              && m_batches.displayedVisibility.known.isKnown(room.getServerId());
+    if (!visibility.enabled || !room || !visibility.allows(room)
+        || room.getPosition().z != getCurrentLayer() || alreadyDrawn) {
+        m_enteredRoomMeshes.reset();
+        m_enteredRoomMap.reset();
+        return;
+    }
+    const auto &map = m_data.getCurrentMap();
+    if (!m_enteredRoomMeshes || !m_enteredRoomMap || !m_enteredRoomMap->isSamePointer(map)
+        || m_enteredRoomId != room.getId()) {
+        m_enteredRoomMeshes = generateEnteredRoomMeshes(room,
+                                                        mctp::getProxy(m_textures),
+                                                        getOpenGL());
+        m_enteredRoomMap = map;
+        m_enteredRoomId = room.getId();
+    }
+    getOpenGL().clearDepth();
+    m_enteredRoomMeshes->render(getCurrentLayer(), getCurrentLayer());
+}
+
 RoomVisibility MapCanvas::displayedRoomVisibility() const
 {
     const auto desired = currentRoomVisibility();

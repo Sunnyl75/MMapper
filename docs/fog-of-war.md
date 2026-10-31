@@ -6,8 +6,10 @@ terrain file in **Preferences → Background Map**. Connect to MUME and select
 your character. The option defaults to off.
 
 Only rooms with a valid server ID present in the current character's usable
-`Room.Known` snapshot are drawn. Before that history is available, the canvas
-shows the terrain background and waits for history. A completed cache from the
+known-room snapshot are drawn. `Room.Info` immediately records the entered room
+in that same shared snapshot; it need not wait for `Room.Known.Add`. Before the
+full history is available, only positively confirmed rooms appear over the terrain
+background. A completed cache from the
 same character and server is usable while the server refreshes it. Room
 presence in the map, movement and coordinates never establish discovery.
 
@@ -56,8 +58,8 @@ new changes coalesce into the next job.
 knowledge may shrink, and its `generation` identifies character/session changes.
 Already visible geometry stays drawable during additions. An incompatible
 history or character change hides old geometry immediately; stale results are
-drained without a GPU upload. Incomplete or empty histories skip the full room
-scan and produce an empty foreground.
+drained without a GPU upload. Snapshots containing no positively known rooms skip
+the full room scan and produce an empty foreground.
 
 The boundary-shadow worker uses the same visibility as the displayed
 foreground. Hidden rooms neither cast shadows nor suppress a visible room's
@@ -66,7 +68,12 @@ they do not reload, reclassify, retexture or rebuild the background terrain.
 
 This first version uses master's existing foreground batching. A reveal can
 rebuild foreground batches asynchronously; it does not yet update individual
-foreground chunks. Full-map live-play latency still needs measurement. There
+foreground chunks. While those batches catch up, the positively known current
+room draws immediately using the ordinary room renderer. This temporary render
+cache builds just one room on the GL thread, performs no map scan or file I/O,
+and is discarded when the full batches include it. It adds no parallel discovery
+state, protocol requests or persistent cache. Full-map live-play latency still
+needs measurement. There
 is no new platform-specific rendering, storage or threading dependency.
 
 ## Validation

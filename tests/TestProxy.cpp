@@ -210,6 +210,50 @@ void TestProxy::knownRoomsRefreshTest()
     QVERIFY(!known.getSnapshot().complete);
 }
 
+void TestProxy::knownRoomsEnteredRoomTest()
+{
+    GameObserver observer;
+    Signal2Lifetime lifetime;
+    int changes = 0;
+    int requests = 0;
+    observer.sig2_knownRoomsChanged.connect(lifetime, [&changes]() { ++changes; });
+    observer.sig2_requestKnownRooms.connect(lifetime, [&requests]() { ++requests; });
+    observer.setKnownRoomsConsumerEnabled(QStringLiteral("fog-of-war"), true);
+    observer.setKnownRoomsConsumerEnabled(QStringLiteral("undiscovered-rooms"), true);
+    const auto receive = [&](const QByteArray &message) {
+        observer.observeSentToUserGmcp(GmcpMessage::fromRawBytes(message));
+    };
+    receive(R"(Char.Name {"name":"Bilbo"})");
+    QCOMPARE(requests, 1);
+    receive(R"(Room.Info {"id":42})");
+    QVERIFY(!observer.getKnownRooms().complete);
+    QVERIFY(observer.getKnownRooms().isKnown(ServerRoomId{42}));
+    QVERIFY(!observer.getKnownRooms().isUndiscovered(ServerRoomId{99}));
+    // A stale history response must not undo the room we have just entered.
+    receive("Room.Known.List [1]");
+    receive("Room.Known.List null");
+    QVERIFY(observer.getKnownRooms().isKnown(ServerRoomId{42}));
+    QVERIFY(observer.getKnownRooms().isUndiscovered(ServerRoomId{99}));
+    const auto beforeEntry = changes;
+    const auto generation = observer.getKnownRooms().generation;
+    receive(R"(Room.Info {"id":99})");
+    QVERIFY(observer.getKnownRooms().isKnown(ServerRoomId{99}));
+    QCOMPARE(changes, beforeEntry + 1);
+    QCOMPARE(observer.getKnownRooms().generation, generation);
+    receive("Room.Known.Add 99");
+    receive(R"(Room.Info {"id":99})");
+    QCOMPARE(changes, beforeEntry + 1); // No duplicate reveal or list request.
+    QCOMPARE(requests, 1);
+    for (const auto *body :
+         {"{}", "null", "[]", "{\"id\":0}", "{\"id\":-1}", "{\"id\":1.5}", "{\"id\":\"100\"}"}) {
+        receive(QByteArray("Room.Info ") + body);
+    }
+    QCOMPARE(changes, beforeEntry + 1);
+    receive(R"(Char.Name {"name":"Frodo"})");
+    QVERIFY(!observer.getKnownRooms().isKnown(ServerRoomId{42}));
+    QVERIFY(!observer.getKnownRooms().isKnown(ServerRoomId{99}));
+}
+
 void TestProxy::knownRoomsObserverTest()
 {
     GameObserver observer;
@@ -360,8 +404,9 @@ void TestProxy::knownRoomsCacheLiveTest()
         known.configureCache(dir.path(), "mume.org:4242", []() {});
         QVERIFY(!known.setEnabled(true));
         QVERIFY(known.receive(GmcpMessage::fromRawBytes(R"(Char.Name {"name":"Bilbo"})")));
-        // A discovery arriving before the disk read completes must not be lost.
-        QVERIFY(!known.receive(GmcpMessage::fromRawBytes("Room.Known.Add 9")));
+        // Entering a room before the disk read completes must reveal and retain it.
+        QVERIFY(!known.receive(GmcpMessage::fromRawBytes(R"(Room.Info {"id":9})")));
+        QVERIFY(known.getSnapshot().isKnown(ServerRoomId{9}));
         QTRY_VERIFY(known.getSnapshot().complete);
         QVERIFY(!known.getSnapshot().isUndiscovered(ServerRoomId{9}));
         QVERIFY(!known.receive(GmcpMessage::fromRawBytes("Room.Known.List [1]")));

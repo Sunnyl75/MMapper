@@ -12,10 +12,7 @@ struct NODISCARD RoomVisibility final
     bool enabled = false;
     KnownRooms::Snapshot known;
 
-    NODISCARD bool hidesAllRooms() const
-    {
-        return enabled && (!known.complete || known.rooms.empty());
-    }
+    NODISCARD bool hidesAllRooms() const { return enabled && known.rooms.empty(); }
 
     NODISCARD bool allows(const RoomHandle &room) const
     {

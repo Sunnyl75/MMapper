@@ -84,7 +84,9 @@ private slots:
         map.getRooms().for_each(
             [&](const RoomId id) { QVERIFY(!visibility.allows(map.getRoomHandle(id))); });
         visibility.known.rooms.insert(ServerRoomId{1});
-        QVERIFY(!visibility.allows(map.findRoomHandle(ServerRoomId{1})));
+        // An entered room is positive evidence even before history completes.
+        QVERIFY(visibility.allows(map.findRoomHandle(ServerRoomId{1})));
+        QVERIFY(!visibility.hidesAllRooms());
         visibility.known.complete = true;
         QVERIFY(visibility.allows(map.findRoomHandle(ServerRoomId{1})));
         QVERIFY(!visibility.allows(map.findRoomHandle(ServerRoomId{2})));

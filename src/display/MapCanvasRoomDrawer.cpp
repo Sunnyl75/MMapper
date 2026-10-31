@@ -883,6 +883,16 @@ NODISCARD static LayerMeshesIntermediate generateLayerMeshes(
     return data.buildIntermediate();
 }
 
+LayerMeshes generateEnteredRoomMeshes(const RoomHandle &room,
+                                      const mctp::MapCanvasTexturesProxy &textures,
+                                      OpenGL &gl)
+{
+    // Already on the GUI thread: use its live colors, not worker-only TLS.
+    VisitRoomOptions options;
+    options.drawNotMappedExits = getConfig().canvas.showUnmappedExits.get();
+    return generateLayerMeshes(RoomVector{room}, textures, OptBounds{}, options).getLayerMeshes(gl);
+}
+
 struct NODISCARD InternalData final : public IMapBatchesFinisher
 {
 public:

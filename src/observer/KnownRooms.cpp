@@ -13,6 +13,7 @@
 
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QJsonValue>
 
 namespace {
@@ -217,11 +218,12 @@ bool KnownRooms::receive(const GmcpMessage &message)
         }
         return requestList();
     }
-    if (!message.isRoomKnownList() && !message.isRoomKnownAdd()) {
+    if (!message.isRoomKnownList() && !message.isRoomKnownAdd() && !message.isRoomInfo()) {
         return false;
     }
     // Still drain a response when the option is disabled during a transfer.
-    if (!m_enabled && !m_cache && (!message.isRoomKnownList() || !m_receiving)) {
+    if ((!m_enabled && !m_cache && (!message.isRoomKnownList() || !m_receiving))
+        || (message.isRoomInfo() && m_character.isEmpty())) {
         return false;
     }
 
@@ -242,14 +244,15 @@ bool KnownRooms::receive(const GmcpMessage &message)
         return false;
     }
     const auto value = wrapper.array().at(0);
-    if (message.isRoomKnownAdd()) {
+    if (message.isRoomKnownAdd() || message.isRoomInfo()) {
         if (m_enabled || m_cache) {
-            if (const auto id = roomId(value)) {
+            const auto idValue = message.isRoomInfo() ? value.toObject().value("id") : value;
+            if (const auto id = roomId(idValue)) {
                 m_liveKnown.insert(*id);
                 if (m_receiving && !m_discard) {
                     m_pending.insert(*id);
                 }
-                if (m_snapshot.complete && !m_snapshot.rooms.contains(*id)) {
+                if (!m_snapshot.rooms.contains(*id)) {
                     m_snapshot.rooms.insert(*id);
                     ++m_snapshot.revision;
                     saveCache();
@@ -265,6 +268,7 @@ bool KnownRooms::receive(const GmcpMessage &message)
         m_receiving = false;
         if (value.isNull() && !m_discard && (m_enabled || m_cache)) {
             m_snapshot.rooms = std::move(m_pending);
+            m_liveKnown.for_each([this](const ServerRoomId id) { m_snapshot.rooms.insert(id); });
             m_snapshot.complete = true;
             m_authoritative = true;
             ++m_snapshot.revision;
