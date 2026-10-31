@@ -2,6 +2,8 @@
 // Copyright (C) 2026 The MMapper Authors
 
 #include "../src/configuration/configuration.h"
+#include "../src/display/FogOfWarCamera.h"
+#include "../src/display/ProjectionUtils.h"
 #include "../src/display/RoomVisibility.h"
 #include "../src/global/progresscounter.h"
 #include "../src/observer/gameobserver.h"
@@ -19,6 +21,51 @@ class TestFogOfWar final : public QObject
     Q_OBJECT
 
 private slots:
+    void backgroundFillsViewportWithCropping()
+    {
+        const ViewportConfig config;
+        const glm::vec2 minimum{-6.f, -271.f};
+        const glm::vec2 maximum{721.f, 21.f};
+        const auto center = (minimum + maximum) * 0.5f;
+        for (const auto size : {glm::ivec2{1200, 400}, glm::ivec2{400, 1200}}) {
+            const auto scale = ProjectionUtils::calculateCoverScale(config,
+                                                                    minimum,
+                                                                    maximum,
+                                                                    size,
+                                                                    0);
+            QVERIFY(scale);
+            const float expected = std::max(static_cast<float>(size.x) / 727.f,
+                                            static_cast<float>(size.y) / 292.f)
+                                   / 44.f;
+            QVERIFY(std::abs(*scale - expected * 1.01f) < 0.0001f);
+            const auto matrix = ProjectionUtils::calculateViewProjOld(center, size, *scale, 0);
+            const auto lower = matrix * glm::vec4{minimum, 0.f, 1.f};
+            const auto upper = matrix * glm::vec4{maximum, 0.f, 1.f};
+            QVERIFY(lower.x / lower.w < -1.f);
+            QVERIFY(lower.y / lower.w < -1.f);
+            QVERIFY(upper.x / upper.w > 1.f);
+            QVERIFY(upper.y / upper.w > 1.f);
+        }
+        QVERIFY(!ProjectionUtils::calculateCoverScale(config, minimum, maximum, {0, 400}, 0));
+        QVERIFY(!ProjectionUtils::calculateCoverScale(config, minimum, minimum, {800, 400}, 0));
+    }
+
+    void arrivalPansAndZoomsSmoothly()
+    {
+        const FogOfWarCamera camera{{350.f, -125.f}, {100.f, 20.f}, 0.1f, 1.f};
+        const auto start = camera.sample(0.f);
+        const auto middle = camera.sample(0.5f);
+        const auto finish = camera.sample(1.f);
+        QVERIFY(glm::length(start.center - camera.fromCenter) < 0.001f);
+        QVERIFY(glm::length(finish.center - camera.toCenter) < 0.001f);
+        QVERIFY(glm::length(middle.center - glm::vec2{225.f, -52.5f}) < 0.001f);
+        QVERIFY(std::abs(middle.scale - std::sqrt(0.1f)) < 0.0001f);
+        QVERIFY(std::abs(start.scale - camera.fromScale) < 0.0001f);
+        QVERIFY(std::abs(finish.scale - camera.toScale) < 0.0001f);
+        QVERIFY(glm::length(camera.sample(2.f).center - finish.center) < 0.001f);
+        QVERIFY(glm::length(camera.sample(-1.f).center - start.center) < 0.001f);
+    }
+
     void strictRoomVisibility()
     {
         ProgressCounter pc;

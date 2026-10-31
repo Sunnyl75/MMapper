@@ -23,6 +23,14 @@ RoomVisibility MapCanvas::displayedRoomVisibility() const
 void MapCanvas::fogOfWarChanged()
 {
     const auto visibility = currentRoomVisibility();
+    if (visibility.enabled != m_selectionVisibility.enabled
+        || visibility.known.generation != m_selectionVisibility.known.generation) {
+        m_fogAwaitingPlayer = true;
+        m_fogPlayerLocated = false;
+        m_fogCamera.reset();
+        m_fogOverviewBounds.reset();
+        setTemporaryScale(std::nullopt);
+    }
     if (!m_selectionVisibility.canDisplayFor(visibility)) {
         slot_clearAllSelections();
     }
@@ -36,4 +44,74 @@ void MapCanvas::initFogOfWar()
     setConfig().canvas.fogOfWarEnabled.registerChangeCallback(m_lifetime,
                                                               [this]() { fogOfWarChanged(); });
     fogOfWarChanged();
+    m_frameManager.registerCallback(m_lifetime, [this]() {
+        return m_fogCamera ? FrameManager::AnimationStatusEnum::Continue
+                           : FrameManager::AnimationStatusEnum::Stop;
+    });
+}
+
+void MapCanvas::updateFogOfWarView()
+{
+    const auto visibility = currentRoomVisibility();
+    if (!visibility.enabled) {
+        return;
+    }
+    if (m_fogAwaitingPlayer && getConfig().canvas.backgroundMapEnabled.get()) {
+        // Surface terrain supplies the opening view even if a previous session
+        // ended underground. Bounds are cached by the independent loader worker.
+        const auto bounds = m_backgroundMap.bounds(0);
+        const auto size = getViewport().size;
+        if (bounds && (bounds != m_fogOverviewBounds || size != m_fogOverviewSize)) {
+            const auto scale = ProjectionUtils::calculateCoverScale(getViewportConfig(),
+                                                                    bounds->minimum,
+                                                                    bounds->maximum,
+                                                                    size,
+                                                                    0);
+            if (scale) {
+                stopFlick();
+                m_fogOverviewBounds = bounds;
+                m_fogOverviewSize = size;
+                setCurrentLayer(0);
+                const auto center = (bounds->minimum + bounds->maximum) * 0.5f;
+                setScroll(center);
+                setTemporaryScale(*scale);
+                emit sig_onCenter(center);
+            }
+        }
+    }
+    const auto room = m_data.getCurrentRoom();
+    if (m_fogAwaitingPlayer && m_fogPlayerLocated && room && width() > 0 && height() > 0
+        && visibility.known.complete && visibility.allows(room) && m_batches.mapBatches
+        && !m_batches.isInProgress() && !m_data.getNeedsMapUpdate()
+        && m_batches.displayedVisibility.canDisplayFor(visibility)
+        && m_batches.displayedVisibility.known.isKnown(room.getServerId())
+        && (!getConfig().canvas.backgroundMapEnabled.get() || !m_backgroundMap.isLoading())) {
+        m_fogAwaitingPlayer = false;
+        const auto destination = room.getPosition();
+        // A missing/disabled background supplies no opening view to animate from.
+        if (m_fogOverviewBounds) {
+            m_fogCamera = FogOfWarCamera{getScroll(),
+                                         destination.to_vec2() + glm::vec2{0.5f},
+                                         getTotalScaleFactor(),
+                                         getRawZoom()};
+            m_fogCameraClock.start();
+            m_frameManager.requestUpdate();
+        } else {
+            onMovement();
+        }
+    }
+    if (m_fogCamera) {
+        constexpr float DURATION_MS = 1400.f;
+        const float fraction = static_cast<float>(m_fogCameraClock.elapsed()) / DURATION_MS;
+        const auto pose = m_fogCamera->sample(fraction);
+        setScroll(pose.center);
+        setTemporaryScale(pose.scale);
+        emit sig_onCenter(pose.center);
+        if (fraction >= 1.f) {
+            m_fogCamera.reset();
+            setTemporaryScale(std::nullopt);
+            onMovement();
+        }
+        return;
+    }
 }

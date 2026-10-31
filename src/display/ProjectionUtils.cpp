@@ -14,6 +14,65 @@
 
 namespace ProjectionUtils {
 
+std::optional<float> calculateCoverScale(const ViewportConfig &config,
+                                         const glm::vec2 minimum,
+                                         const glm::vec2 maximum,
+                                         const glm::ivec2 size,
+                                         const int layer)
+{
+    if (size.x <= 0 || size.y <= 0 || glm::any(glm::lessThanEqual(maximum, minimum))) {
+        return std::nullopt;
+    }
+    const auto center = (minimum + maximum) * 0.5f;
+    const auto covers = [&](const float scale) {
+        const auto matrix = config.use3D ? calculateViewProj(config, center, size, scale, layer)
+                                         : calculateViewProjOld(center, size, scale, layer);
+        const auto inverse = glm::inverse(matrix);
+        for (const float x : {-1.f, 1.f}) {
+            for (const float y : {-1.f, 1.f}) {
+                auto rayStart = inverse * glm::vec4{x, y, -1.f, 1.f};
+                auto rayEnd = inverse * glm::vec4{x, y, 1.f, 1.f};
+                if (std::abs(rayStart.w) < 1e-8f || std::abs(rayEnd.w) < 1e-8f) {
+                    return false;
+                }
+                rayStart /= rayStart.w;
+                rayEnd /= rayEnd.w;
+                const auto ray = rayEnd - rayStart;
+                if (std::abs(ray.z) < 1e-8f) {
+                    return false;
+                }
+                const float t = (static_cast<float>(layer) - rayStart.z) / ray.z;
+                const auto point = glm::vec2{rayStart + t * ray};
+                if (!std::isfinite(t) || t < 0.f || t > 1.f
+                    || glm::any(glm::lessThan(point, minimum))
+                    || glm::any(glm::greaterThan(point, maximum))) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    };
+    float lower = 0.f;
+    float upper = 1.f;
+    while (!covers(upper)) {
+        lower = upper;
+        upper *= 2.f;
+        if (upper > 65536.f) {
+            return std::nullopt;
+        }
+    }
+    for (int i = 0; i < 32; ++i) {
+        const float middle = (lower + upper) * 0.5f;
+        if (covers(middle)) {
+            upper = middle;
+        } else {
+            lower = middle;
+        }
+    }
+    // Slight overscan keeps floating-point rounding from exposing a thin edge.
+    return upper * 1.01f;
+}
+
 float calculatePitchDegrees(const ViewportConfig &config, const float zoomScale)
 {
     if (!config.autoTilt) {

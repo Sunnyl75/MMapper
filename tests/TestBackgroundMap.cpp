@@ -68,6 +68,25 @@ private slots:
                  backgroundmap::ROAD_TEXTURE_OFFSET + static_cast<int>(mask));
     }
 
+    void cachedBoundsIncludeWholeTilesAndSeparateLayers()
+    {
+        ProgressCounter pc;
+        const auto geometry = backgroundmap::buildGeometry({room(0, Coordinate{-6, -271, 0}),
+                                                            room(1, Coordinate{720, 20, 0}),
+                                                            room(2, Coordinate{4, 5, -1})},
+                                                           pc);
+        const auto bounds = backgroundmap::bounds(geometry, pc);
+        QCOMPARE(bounds.size(), size_t{2});
+        QVERIFY(bounds.at(0).minimum == glm::vec2(-6.f, -271.f));
+        QVERIFY(bounds.at(0).maximum == glm::vec2(721.f, 21.f));
+        QVERIFY(bounds.at(-1).minimum == glm::vec2(4.f, 5.f));
+        QVERIFY(bounds.at(-1).maximum == glm::vec2(5.f, 6.f));
+        QVERIFY(backgroundmap::bounds({}, pc).empty());
+        pc.requestCancel();
+        QVERIFY_THROWS_EXCEPTION(ProgressCanceledException,
+                                 static_cast<void>(backgroundmap::bounds(geometry, pc)));
+    }
+
     void rejectsOverlappingRoomsAndHonorsCancellation()
     {
         ProgressCounter pc;

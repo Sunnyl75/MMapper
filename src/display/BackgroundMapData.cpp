@@ -58,6 +58,25 @@ Geometry buildGeometry(const std::vector<ExternalRawRoom> &rooms, ProgressCounte
     return result;
 }
 
+LayerBounds bounds(const Geometry &geometry, ProgressCounter &progress)
+{
+    LayerBounds result;
+    progress.setNewTask(ProgressMsg{"Measure background terrain"}, geometry.size());
+    for (const auto &[key, vertices] : geometry) {
+        progress.step();
+        for (const auto &vertex : vertices) {
+            const auto pos = glm::vec2{vertex.vertTexCol};
+            const auto [it, inserted] = result.try_emplace(std::get<0>(key),
+                                                           Bounds{pos, pos + glm::vec2{1.f}});
+            if (!inserted) {
+                it->second.minimum = glm::min(it->second.minimum, pos);
+                it->second.maximum = glm::max(it->second.maximum, pos + glm::vec2{1.f});
+            }
+        }
+    }
+    return result;
+}
+
 std::vector<QImage> loadTextures(const QStringList &files,
                                  const bool soften,
                                  ProgressCounter &progress)

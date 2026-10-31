@@ -73,6 +73,7 @@ set(mmapper_SRCS
     preferences/FogOfWarPage.cpp
     preferences/FogOfWarPage.h
     display/FogOfWar.cpp
+    display/FogOfWarCamera.h
     display/RoomVisibility.h
     display/CanvasMouseModeEnum.h
     display/Characters.cpp

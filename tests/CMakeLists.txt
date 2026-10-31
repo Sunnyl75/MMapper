@@ -17,6 +17,7 @@ set_target_properties(TestBackgroundMap PROPERTIES
 add_test(NAME TestBackgroundMap COMMAND TestBackgroundMap)
 
 add_executable(TestFogOfWar TestFogOfWar.cpp
+    ../src/display/ProjectionUtils.cpp
     ../src/preferences/FogOfWarPage.cpp ../src/preferences/FogOfWarPage.h)
 target_link_libraries(TestFogOfWar PRIVATE mm_map mm_test mm_global
     Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test coverage_config)

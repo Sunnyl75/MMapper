@@ -15,6 +15,7 @@
 #include "../opengl/OpenGL.h"
 #include "../opengl/Weather.h"
 #include "BackgroundMapLayer.h"
+#include "FogOfWarCamera.h"
 #include "FrameManager.h"
 #include "Infomarks.h"
 #include "MapCanvasConfig.h"
@@ -38,6 +39,7 @@
 #include <glm/glm.hpp>
 
 #include <QColor>
+#include <QElapsedTimer>
 #include <QMatrix4x4>
 #include <QOpenGLDebugMessage>
 #include <QSize>
@@ -202,6 +204,12 @@ private:
     GLWeather m_weather;
     BackgroundMapLayer m_backgroundMap;
     RoomVisibility m_selectionVisibility;
+    bool m_fogAwaitingPlayer = true;
+    bool m_fogPlayerLocated = false;
+    std::optional<backgroundmap::Bounds> m_fogOverviewBounds;
+    glm::ivec2 m_fogOverviewSize{0};
+    std::optional<FogOfWarCamera> m_fogCamera;
+    QElapsedTimer m_fogCameraClock;
     bool m_cleanedUp = false;
 
     // Deferred (defer-to-next-render) state for GL work that historically ran
@@ -350,6 +358,7 @@ public:
     void paintMap();
     void initFogOfWar();
     void fogOfWarChanged();
+    void updateFogOfWarView();
     NODISCARD RoomVisibility currentRoomVisibility() const;
     NODISCARD RoomVisibility displayedRoomVisibility() const;
     void renderMapBatches();

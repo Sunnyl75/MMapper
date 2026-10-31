@@ -472,6 +472,7 @@ void MapCanvas::setViewportAndMvp(const int width, const int height, const qreal
     // also acts as the "first frame" safety net, since nothing else queries
     // the live host size on every access.
     setViewportSize(width, height, dpr);
+    updateFogOfWarView();
 
     if (width != m_lastWidth || height != m_lastHeight) {
         m_lastWidth = width;

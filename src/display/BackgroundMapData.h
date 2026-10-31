@@ -28,6 +28,17 @@ using ChunkKey = std::tuple<int, int, int>; // z, chunk x, chunk y
 using Geometry = std::map<ChunkKey, std::vector<RoomQuadTexVert>>;
 using ShadowGeometry = std::map<int, std::vector<ColorVert>>;
 
+struct NODISCARD Bounds final
+{
+    glm::vec2 minimum{0.f};
+    glm::vec2 maximum{0.f};
+    bool operator==(const Bounds &) const = default;
+};
+using LayerBounds = std::map<int, Bounds>;
+
+// Calculated on the loader worker, independently of foreground updates.
+NODISCARD LayerBounds bounds(const Geometry &geometry, ProgressCounter &progress);
+
 NODISCARD Geometry loadGeometry(const QString &filename,
                                 const std::shared_ptr<ProgressCounter> &progress);
 NODISCARD Geometry buildGeometry(const std::vector<ExternalRawRoom> &rooms,

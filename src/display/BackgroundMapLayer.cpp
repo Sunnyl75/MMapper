@@ -29,6 +29,12 @@ struct WorkResult final
     T data;
     QString error;
 };
+
+struct TerrainResult final
+{
+    backgroundmap::Geometry geometry;
+    backgroundmap::LayerBounds bounds;
+};
 } // namespace
 
 BackgroundMapLayer::BackgroundMapLayer(std::function<void()> requestUpdate)
@@ -92,13 +98,14 @@ void BackgroundMapLayer::reloadMap()
     cancel(m_mapTask);
     const auto generation = ++m_mapGeneration;
     m_geometry.clear();
+    m_bounds.clear();
     m_geometryDirty = true;
     const auto &settings = getConfig().canvas;
     const auto filename = settings.backgroundMapFile.get();
     if (!settings.backgroundMapEnabled.get() || filename.isEmpty()) {
         return;
     }
-    auto result = std::make_shared<WorkResult<backgroundmap::Geometry>>();
+    auto result = std::make_shared<WorkResult<TerrainResult>>();
     const QPointer<BackgroundMapLayer> self(this);
     m_mapTask = async_tasks::startAsyncTask2(
         AsyncTaskTypeEnum::IO,
@@ -106,7 +113,8 @@ void BackgroundMapLayer::reloadMap()
         "Load background terrain",
         [filename, result](const std::shared_ptr<ProgressCounter> &pc) {
             try {
-                result->data = backgroundmap::loadGeometry(filename, pc);
+                result->data.geometry = backgroundmap::loadGeometry(filename, pc);
+                result->data.bounds = backgroundmap::bounds(result->data.geometry, *pc);
             } catch (const ProgressCanceledException &) {
                 throw;
             } catch (const std::exception &error) {
@@ -118,13 +126,22 @@ void BackgroundMapLayer::reloadMap()
                 return;
             }
             self->m_mapTask.reset();
-            self->m_geometry = std::move(result->data);
+            self->m_geometry = std::move(result->data.geometry);
+            self->m_bounds = std::move(result->data.bounds);
             self->m_geometryDirty = true;
             emit self->sig_log(result->error.isEmpty()
                                    ? QStringLiteral("Background terrain loaded (read-only)")
                                    : QStringLiteral("Background map: %1").arg(result->error));
             self->m_requestUpdate();
         });
+}
+
+std::optional<backgroundmap::Bounds> BackgroundMapLayer::bounds(const int layer) const
+{
+    if (const auto it = m_bounds.find(layer); it != m_bounds.end()) {
+        return it->second;
+    }
+    return std::nullopt;
 }
 
 void BackgroundMapLayer::reloadTextures()

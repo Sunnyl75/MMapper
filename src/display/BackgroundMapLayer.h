@@ -30,6 +30,7 @@ private:
     size_t m_textureGeneration = 0;
     size_t m_shadowGeneration = 0;
     backgroundmap::Geometry m_geometry;
+    backgroundmap::LayerBounds m_bounds;
     std::vector<QImage> m_images;
     backgroundmap::ShadowGeometry m_shadow;
     std::optional<Map> m_shadowMap;
@@ -48,6 +49,8 @@ public:
     ~BackgroundMapLayer() final;
 
     void start();
+    NODISCARD std::optional<backgroundmap::Bounds> bounds(int layer) const;
+    NODISCARD bool isLoading() const { return m_mapTask.has_value() || m_textureTask.has_value(); }
     // Both rendering and cleanup require the canvas's current GL context.
     void render(OpenGL &gl,
                 int layer,

@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 The MMapper Authors
 
+#include "../global/macros.h"
+
+#include <optional>
+
 #include <glm/glm.hpp>
 
 /**
@@ -19,6 +23,11 @@ struct ViewportConfig
 };
 
 namespace ProjectionUtils {
+
+// Smallest scale whose viewport is covered by the supplied terrain rectangle.
+// Includes rotated/tilted views and uses logical pixels (independent of DPR).
+NODISCARD std::optional<float> calculateCoverScale(
+    const ViewportConfig &config, glm::vec2 minimum, glm::vec2 maximum, glm::ivec2 size, int layer);
 
 static constexpr const int BASESIZE = 528; // REVISIT: Why this size? 16*33 isn't special.
 constexpr float ROOM_Z_SCALE = 7.f;

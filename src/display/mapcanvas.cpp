@@ -1358,6 +1358,15 @@ void MapCanvas::slot_zoomReset()
 void MapCanvas::onMovement()
 {
     stopFlick();
+    if (currentRoomVisibility().enabled && (m_fogAwaitingPlayer || m_fogCamera)) {
+        if (m_fogCamera) {
+            if (const auto pos = m_data.tryGetPosition()) {
+                m_fogCamera->toCenter = pos->to_vec2() + glm::vec2{0.5f};
+            }
+        }
+        m_frameManager.requestUpdate();
+        return;
+    }
     const Coordinate pos = m_data.tryGetPosition().value_or(Coordinate{});
     setCurrentLayer(pos.z);
     getOpenGL().getUboManager().invalidate(Legacy::SharedVboEnum::CameraBlock);
@@ -1380,6 +1389,7 @@ void MapCanvas::slot_moveMarker(const RoomId id)
 {
     assert(id != INVALID_ROOMID);
     m_data.setRoom(id);
+    m_fogPlayerLocated = true;
     onMovement();
 }
 
@@ -1479,6 +1489,7 @@ void MapCanvas::selectionChanged()
 
 void MapCanvas::syncViewportConfig()
 {
+    m_fogOverviewBounds.reset();
     const auto &advanced = getConfig().canvas.advanced;
     const ViewportConfig config{advanced.use3D.get(),
                                 advanced.autoTilt.get(),

@@ -86,3 +86,12 @@ Tests use Qt's offscreen platform and disable leak detection for Qt's static
 plugin allocations; address/undefined-behaviour errors remain fatal. Optional
 bundled media, updater, keychain, OpenSSL and WebSockets were disabled for the
 Linux build. These switches are not requirements for the feature.
+
+At entry, fog of war centers the surface background and scales it to cover the
+window, cropping its edges rather than fitting the whole map. Bounds are computed
+once by the background loader. The opening zoom is temporary and does not replace
+the saved gameplay zoom. Once known-room history and a live player position are
+available, a 1.4-second eased pan and zoom takes the view to the character. Live
+history additions do not replay the arrival animation; a character/session change
+rearms it. Resizing the opening view recalculates its coverage without reloading
+terrain or textures.

@@ -117,6 +117,7 @@ private:
     mutable bool m_viewProjDirty = true;
     glm::vec2 m_scroll{0.f};
     ScaleFactor m_scaleFactor;
+    std::optional<float> m_temporaryScale;
     int m_currentLayer = 0;
     ViewportConfig m_viewportConfig;
 
@@ -157,7 +158,16 @@ public:
     NODISCARD const ScaleFactor &getScaleFactor() const { return m_scaleFactor; }
     void setScaleFactor(const ScaleFactor &scaleFactor)
     {
+        m_temporaryScale.reset();
         m_scaleFactor = scaleFactor;
+        markViewProjDirty();
+    }
+
+    // Presentation-only camera zoom; never changes the saved gameplay zoom.
+    void setTemporaryScale(const std::optional<float> scale)
+    {
+        assert(!scale || (std::isfinite(*scale) && *scale > 0.f));
+        m_temporaryScale = scale;
         markViewProjDirty();
     }
 
@@ -180,6 +190,7 @@ public:
         m_viewportConfig = config;
         markViewProjDirty();
     }
+    NODISCARD const ViewportConfig &getViewportConfig() const { return m_viewportConfig; }
     void setMvpExtern(const glm::mat4 &mvp) const
     {
         m_viewProj = mvp;
@@ -192,7 +203,10 @@ public:
     {
         return Viewport{glm::ivec2{0, 0}, glm::ivec2{m_viewportWidth, m_viewportHeight}};
     }
-    NODISCARD float getTotalScaleFactor() const { return m_scaleFactor.getTotal(); }
+    NODISCARD float getTotalScaleFactor() const
+    {
+        return m_temporaryScale.value_or(m_scaleFactor.getTotal());
+    }
 
 public:
     NODISCARD std::optional<glm::vec3> project(glm::vec3) const;
