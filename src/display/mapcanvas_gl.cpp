@@ -869,6 +869,25 @@ void MapCanvas::paintDifferences()
     }
 }
 
+static void renderFogOfWarMessage(GLFont &font, OpenGL &gl)
+{
+    const auto &viewport = gl.getPhysicalViewport();
+    const auto center = glm::vec2{viewport.offset + viewport.size / 2};
+    const float spacing = static_cast<float>(font.getFontHeight()) * 1.5f;
+    const FontFormatFlags alignment{FontFormatFlagEnum::HALIGN_CENTER};
+    font.render2dTextImmediate(
+        std::vector<GLText>{GLText{glm::vec3{center.x, center.y + spacing / 2.f, 0.f},
+                                   "Fog of War mode",
+                                   {},
+                                   {},
+                                   alignment},
+                            GLText{glm::vec3{center.x, center.y - spacing / 2.f, 0.f},
+                                   "Your map awaits your entry into Arda.",
+                                   {},
+                                   {},
+                                   alignment}});
+}
+
 void MapCanvas::paintMap()
 {
     const bool pending = m_batches.remeshCookie.isPending();
@@ -881,7 +900,7 @@ void MapCanvas::paintMap()
                                    m_data.getCurrentMap(),
                                    displayedRoomVisibility());
             if (!visibility.known.complete) {
-                getGLFont().renderTextCentered("Fog of War mode");
+                renderFogOfWarMessage(getGLFont(), getOpenGL());
             }
             return;
         }
@@ -904,7 +923,7 @@ void MapCanvas::paintMap()
     renderMapBatches();
 
     if (visibility.enabled && !visibility.known.complete) {
-        getGLFont().renderTextCentered("Fog of War mode");
+        renderFogOfWarMessage(getGLFont(), getOpenGL());
     }
 
     if (pending && !visibility.enabled) {
