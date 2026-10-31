@@ -881,7 +881,7 @@ void MapCanvas::paintMap()
                                    m_data.getCurrentMap(),
                                    displayedRoomVisibility());
             if (!visibility.known.complete) {
-                getGLFont().renderTextCentered("Waiting for known-room history...");
+                getGLFont().renderTextCentered("Fog of War mode");
             }
             return;
         }
@@ -904,7 +904,7 @@ void MapCanvas::paintMap()
     renderMapBatches();
 
     if (visibility.enabled && !visibility.known.complete) {
-        getGLFont().renderTextCentered("Waiting for known-room history...");
+        getGLFont().renderTextCentered("Fog of War mode");
     }
 
     if (pending && !visibility.enabled) {
