@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+    <qresource prefix="/maps">
+        <file alias="background-terrain.mm2xml" compress="9">@BUNDLED_BACKGROUND_MAP_FILE@</file>
+        <file alias="background-terrain.json">@BUNDLED_BACKGROUND_MAP_METADATA@</file>
+    </qresource>
+</RCC>

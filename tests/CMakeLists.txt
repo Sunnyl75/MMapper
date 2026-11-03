@@ -1,7 +1,12 @@
 add_compile_definitions(MM_TESTING)
 
+include(BundledBackgroundMap)
+mmapper_prepare_background_resource(background_map_qrc)
+qt_add_resources(background_map_test_RCC "${background_map_qrc}")
+
 add_executable(TestBackgroundMap
     TestBackgroundMap.cpp
+    ${background_map_test_RCC}
     ../src/display/BackgroundMapData.cpp
     ../src/display/BackgroundMapData.h
     ../src/display/RoadIndex.cpp

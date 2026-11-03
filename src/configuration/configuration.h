@@ -180,6 +180,7 @@ public:
         NamedConfig<int> renderScale{"RENDER_SCALE", 100};
         NamedConfig<bool> backgroundMapEnabled{"BACKGROUND_MAP_ENABLED", false};
         NamedConfig<bool> fogOfWarEnabled{"FOG_OF_WAR_ENABLED", false};
+        // Empty selects the map resource bundled with the application.
         NamedConfig<QString> backgroundMapFile{"BACKGROUND_MAP_FILE", {}};
         NamedConfig<QString> backgroundMapTileset{"BACKGROUND_MAP_TILESET",
                                                   QStringLiteral("builtin")};

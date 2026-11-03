@@ -13,9 +13,49 @@
 #include <stdexcept>
 #include <unordered_set>
 
+#include <QFile>
 #include <QImageReader>
+#include <QSaveFile>
 
 namespace backgroundmap {
+
+QString mapFilename(const QString &selected)
+{
+    const auto path = selected.trimmed();
+    return path.isEmpty() ? QStringLiteral(":/maps/background-terrain.mm2xml") : path;
+}
+
+bool saveMapCopy(const QString &sourceName, const QString &destination, QString &error)
+{
+    error.clear();
+    QFile source(mapFilename(sourceName));
+    if (!source.open(QIODevice::ReadOnly)) {
+        error = source.errorString();
+        return false;
+    }
+    QSaveFile output(destination);
+    if (!output.open(QIODevice::WriteOnly)) {
+        error = output.errorString();
+        return false;
+    }
+    while (!source.atEnd()) {
+        const auto block = source.read(64 * 1024);
+        if (block.isEmpty()) {
+            error = source.errorString();
+            return false;
+        }
+        if (output.write(block) != block.size()) {
+            error = output.errorString();
+            return false;
+        }
+    }
+    if (!output.commit()) {
+        error = output.errorString();
+        return false;
+    }
+    return true;
+}
+
 namespace {
 int chunkIndex(const int value)
 {

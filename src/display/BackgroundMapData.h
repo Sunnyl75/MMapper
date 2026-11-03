@@ -18,6 +18,10 @@ class ProgressCounter;
 
 namespace backgroundmap {
 
+// Empty preference means the portable, read-only resource shipped with the app.
+NODISCARD QString mapFilename(const QString &selected);
+NODISCARD bool saveMapCopy(const QString &source, const QString &destination, QString &error);
+
 // CPU-only data. No MapData, selection, game IDs, text, exits or editing state
 // survive loading. The ordinary map readers remain the single format authority.
 constexpr int CHUNK_SIZE = 64;

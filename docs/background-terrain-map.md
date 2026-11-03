@@ -121,3 +121,29 @@ ctest --test-dir build -R TestBackgroundMap --output-on-failure
 Native Windows/macOS execution and a browser build still require platform CI or
 manual review; using their shared code paths does not itself establish those
 platforms have been tested.
+
+## Bundled default map
+
+The build includes `:/maps/background-terrain.mm2xml` as a compressed Qt resource,
+independently of the foreground map's `WITH_MAP` switch. An empty background-file
+preference selects it. Explicit custom paths and the show/hide preference remain
+unchanged. Preferences offers **Use bundled map** and **Save copy…**; saving on
+desktop selects the new editable file, while browsers download a copy that can
+be reimported using Browse. The bundled resource itself is read-only.
+
+`src/resources/maps/background-terrain.tar.gz` contains the corrected standalone
+XML map. CMake expands it into the build directory, validates its hash against
+`background-terrain.json`, and embeds it with Qt's resource compression. This
+needs no Python, network download, runtime extraction, installed data directory
+or platform-specific path. Loading still runs through the existing asynchronous
+background loader and ordinary map readers; foreground refreshes do not reload
+it. The archive adds about 3.6 MiB to the source checkout.
+
+The dataset preserves the supplied MUME/arda tag 42 surface terrain and visual
+ROAD directions, with inferred Fenlon terrain in other cells. Provenance is
+recorded in the JSON beside the archive. To update the bundled map, replace the
+archive's `background-terrain.mm2xml` and update both SHA-256 values and dataset
+metadata in the JSON. The converter remains the authority for native-terrain
+priority and validation. `cmake -E tar cfvz background-terrain.tar.gz
+background-terrain.mm2xml` can package a replacement without Python. Personal
+edits should use Save copy instead of modifying the installed application.

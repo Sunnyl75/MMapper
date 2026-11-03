@@ -34,6 +34,7 @@ public slots:
 
 private:
     void browseMap();
+    void saveMapCopy();
     void browseTiles();
     void selectMap(const QString &filename);
 };

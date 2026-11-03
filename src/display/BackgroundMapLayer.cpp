@@ -101,8 +101,8 @@ void BackgroundMapLayer::reloadMap()
     m_bounds.clear();
     m_geometryDirty = true;
     const auto &settings = getConfig().canvas;
-    const auto filename = settings.backgroundMapFile.get();
-    if (!settings.backgroundMapEnabled.get() || filename.isEmpty()) {
+    const auto filename = backgroundmap::mapFilename(settings.backgroundMapFile.get());
+    if (!settings.backgroundMapEnabled.get()) {
         return;
     }
     auto result = std::make_shared<WorkResult<TerrainResult>>();

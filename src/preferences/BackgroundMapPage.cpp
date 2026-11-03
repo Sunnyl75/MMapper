@@ -4,6 +4,7 @@
 #include "BackgroundMapPage.h"
 
 #include "../configuration/configuration.h"
+#include "../display/BackgroundMapData.h"
 #include "../global/window_utils.h"
 
 #include <algorithm>
@@ -11,6 +12,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
@@ -30,9 +32,9 @@ BackgroundMapPage::BackgroundMapPage(QWidget *parent)
     auto *layout = new QFormLayout(this);
     layout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     layout->setRowWrapPolicy(QFormLayout::WrapLongRows);
-    auto *explanation = new QLabel(tr("A separate terrain map beneath the playable map. "
-                                      "The background is read-only here; open it as a normal map "
-                                      "in another MMapper window to edit it."),
+    auto *explanation = new QLabel(tr("Use the bundled terrain map or choose a separate file. "
+                                      "The background is read-only here. Save a copy to edit "
+                                      "in another MMapper window."),
                                    this);
     explanation->setWordWrap(true);
     layout->addRow(explanation);
@@ -45,7 +47,7 @@ BackgroundMapPage::BackgroundMapPage(QWidget *parent)
     fileLayout->setContentsMargins(0, 0, 0, 0);
     m_file = new QLineEdit(fileRow);
     m_file->setObjectName(QStringLiteral("backgroundMapFile"));
-    m_file->setPlaceholderText(tr("Choose a .mm2 or .mm2xml map"));
+    m_file->setPlaceholderText(tr("Bundled terrain map (default)"));
     auto *browse = new QPushButton(tr("Browse…"), fileRow);
     auto *reload = new QPushButton(tr("Reload"), fileRow);
     reload->setToolTip(tr("Read the background map and tiles again after editing their files."));
@@ -53,6 +55,18 @@ BackgroundMapPage::BackgroundMapPage(QWidget *parent)
     fileLayout->addWidget(browse);
     fileLayout->addWidget(reload);
     layout->addRow(tr("Map file:"), fileRow);
+
+    auto *defaultRow = new QWidget(this);
+    auto *defaultLayout = new QHBoxLayout(defaultRow);
+    defaultLayout->setContentsMargins(0, 0, 0, 0);
+    auto *useBundled = new QPushButton(tr("Use bundled map"), defaultRow);
+    useBundled->setObjectName(QStringLiteral("useBundledBackgroundMap"));
+    auto *saveCopy = new QPushButton(tr("Save copy…"), defaultRow);
+    saveCopy->setObjectName(QStringLiteral("saveBackgroundMapCopy"));
+    defaultLayout->addWidget(useBundled);
+    defaultLayout->addWidget(saveCopy);
+    defaultLayout->addStretch();
+    layout->addRow(QString{}, defaultRow);
 
     m_tileset = new QComboBox(this);
     m_tileset->setObjectName(QStringLiteral("backgroundMapTileset"));
@@ -105,6 +119,8 @@ BackgroundMapPage::BackgroundMapPage(QWidget *parent)
     });
     connect(m_file, &QLineEdit::editingFinished, this, [this]() { selectMap(m_file->text()); });
     connect(browse, &QPushButton::clicked, this, &BackgroundMapPage::browseMap);
+    connect(useBundled, &QPushButton::clicked, this, [this]() { selectMap({}); });
+    connect(saveCopy, &QPushButton::clicked, this, &BackgroundMapPage::saveMapCopy);
     connect(reload, &QPushButton::clicked, this, []() {
         auto &revision = setConfig().canvas.backgroundMapReload;
         revision.set(revision.get() + 1);
@@ -154,6 +170,43 @@ void BackgroundMapPage::selectMap(const QString &filename)
     const auto path = filename.trimmed();
     m_file->setText(path);
     setConfig().canvas.backgroundMapFile.set(path);
+}
+
+void BackgroundMapPage::saveMapCopy()
+{
+    const auto source = getConfig().canvas.backgroundMapFile.get();
+    const auto name = QFileInfo(backgroundmap::mapFilename(source)).fileName();
+#ifdef Q_OS_WASM
+    QFile file(backgroundmap::mapFilename(source));
+    if (!file.open(QIODevice::ReadOnly)) {
+        mmqt::showWarning(this, tr("Background map"), file.errorString());
+        return;
+    }
+    const auto data = file.readAll();
+    if (file.error() != QFileDevice::NoError) {
+        mmqt::showWarning(this, tr("Background map"), file.errorString());
+        return;
+    }
+    QFileDialog::saveFileContent(data, name);
+#else
+    const auto directory = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    auto *dialog = new QFileDialog(this,
+                                   tr("Save background map copy"),
+                                   QDir(directory).filePath(name),
+                                   tr("MMapper maps (*.mm2 *.mm2xml *.xml);;All files (*)"));
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setAcceptMode(QFileDialog::AcceptSave);
+    dialog->setDefaultSuffix(QFileInfo(name).suffix());
+    connect(dialog, &QFileDialog::fileSelected, this, [this, source](const QString &destination) {
+        QString error;
+        if (!backgroundmap::saveMapCopy(source, destination, error)) {
+            mmqt::showWarning(this, tr("Background map"), tr("Could not save map: %1").arg(error));
+            return;
+        }
+        selectMap(destination);
+    });
+    dialog->open();
+#endif
 }
 
 void BackgroundMapPage::browseMap()

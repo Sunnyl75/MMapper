@@ -15,10 +15,17 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QCryptographicHash>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QPushButton>
+#include <QScopeGuard>
 #include <QSettings>
 #include <QSlider>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QXmlStreamReader>
 #include <QtTest>
 
 namespace {
@@ -40,6 +47,75 @@ class TestBackgroundMap final : public QObject
     Q_OBJECT
 
 private slots:
+    void bundledMapIsAvailableWithoutExternalFiles()
+    {
+        QFile metadata(QStringLiteral(":/maps/background-terrain.json"));
+        QVERIFY(metadata.open(QIODevice::ReadOnly));
+        const auto manifest = QJsonDocument::fromJson(metadata.readAll()).object();
+        QFile map(backgroundmap::mapFilename({}));
+        QVERIFY(map.open(QIODevice::ReadOnly));
+        const auto digest = QCryptographicHash::hash(map.readAll(), QCryptographicHash::Sha256)
+                                .toHex();
+        QCOMPARE(digest, manifest.value("map_sha256").toString().toLatin1());
+        QVERIFY(map.seek(0));
+        QXmlStreamReader xml(&map);
+        int rooms = 0;
+        while (!xml.atEnd()) {
+            xml.readNext();
+            if (xml.isStartElement() && xml.name() == QLatin1String("room")) {
+                ++rooms;
+                QVERIFY(!xml.attributes().hasAttribute(QLatin1String("server_id")));
+                QVERIFY(!xml.attributes().hasAttribute(QLatin1String("name")));
+            }
+        }
+        QVERIFY(!xml.hasError());
+        QCOMPARE(rooms, manifest.value("rooms").toInt());
+        QCOMPARE(backgroundmap::mapFilename(QStringLiteral(" custom.mm2xml ")),
+                 QStringLiteral("custom.mm2xml"));
+    }
+
+    void bundledMapCanBeCopiedForEditing()
+    {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto destination = directory.filePath("editable-background.mm2xml");
+        QString error;
+        QVERIFY2(backgroundmap::saveMapCopy({}, destination, error), qPrintable(error));
+        QFile source(backgroundmap::mapFilename({}));
+        QFile copy(destination);
+        QVERIFY(source.open(QIODevice::ReadOnly));
+        QVERIFY(copy.open(QIODevice::ReadOnly));
+        QCOMPARE(QCryptographicHash::hash(copy.readAll(), QCryptographicHash::Sha256),
+                 QCryptographicHash::hash(source.readAll(), QCryptographicHash::Sha256));
+        copy.close();
+        // A failed source read must leave an existing destination intact.
+        const auto previousSize = copy.size();
+        QVERIFY(
+            !backgroundmap::saveMapCopy(directory.filePath("missing.mm2xml"), destination, error));
+        QVERIFY(!error.isEmpty());
+        QCOMPARE(copy.size(), previousSize);
+    }
+
+    void selectingBundledMapPreservesOtherPreferences()
+    {
+        auto &canvas = setConfig().canvas;
+        const auto previousFile = canvas.backgroundMapFile.get();
+        const auto previousOpacity = canvas.backgroundMapOpacity.get();
+        const auto restore = qScopeGuard([&canvas, previousFile, previousOpacity]() {
+            canvas.backgroundMapFile.set(previousFile);
+            canvas.backgroundMapOpacity.set(previousOpacity);
+        });
+        canvas.backgroundMapFile.set(QStringLiteral("custom.mm2xml"));
+        canvas.backgroundMapOpacity.set(65);
+        BackgroundMapPage page(nullptr);
+        auto *button = page.findChild<QPushButton *>("useBundledBackgroundMap");
+        QVERIFY(button);
+        button->click();
+        QVERIFY(canvas.backgroundMapFile.get().isEmpty());
+        QCOMPARE(canvas.backgroundMapOpacity.get(), 65);
+        QVERIFY(QFile::exists(backgroundmap::mapFilename(canvas.backgroundMapFile.get())));
+    }
+
     void coordinatesAndIndependentGeometry()
     {
         ProgressCounter pc;

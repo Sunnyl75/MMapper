@@ -670,6 +670,10 @@ if(NOT EMSCRIPTEN)
 endif()
 
 qt_add_resources(mmapper_QRC resources/mmapper2.qrc)
+include(BundledBackgroundMap)
+mmapper_prepare_background_resource(background_map_qrc)
+qt_add_resources(background_map_RCC "${background_map_qrc}")
+list(APPEND mmapper_QRC ${background_map_RCC})
 
 if(MMAPPER_BETA)
     list(APPEND mmapper_RCS "resources/win32/beta.rc")

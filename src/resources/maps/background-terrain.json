@@ -1,0 +1,77 @@
+{
+  "dataset_version": 5,
+  "updated": "2026-11-04",
+  "map_sha256": "780162c452ecac513934508835a56c2d3045b60e2638457b6cc6a0aeeeb5cdf0",
+  "archive_sha256": "724cddb1c827ee9407089853a8c741de476800dfd57d79ef74c4da575f63c4c3",
+  "rooms": 212284,
+  "native_surface_cells": 21563,
+  "native_terrain_mismatches": 0,
+  "source": {
+    "file": "background-image.png",
+    "width": 3194,
+    "height": 1287,
+    "sha256": "de8600d6e239848586845cad10fc75ff7f6f4f9d9046802f7f2114a86291ee97",
+    "repository": "Sunnyl75/MMapper",
+    "commit": "a8a5adfe68682dd35216f9c63ced55605fed513e",
+    "path": "src/resources/pixmaps/background-image.png"
+  },
+  "reference_overlay": {
+    "enabled": true,
+    "repository": "MUME/arda",
+    "ref": "42",
+    "commit": "14d6bec24045394d72890f9bcc8c1098170e1941",
+    "file": "arda-42.xml",
+    "sha256": "e0aff7dea49cccf075d2d685db52c9c23dfbef8f150fc7ec87f2d7cc88dc5a17",
+    "retained_cells": 21563,
+    "retained_terrain_counts": {
+      "CITY": 756,
+      "SHALLOW": 646,
+      "ROAD": 1342,
+      "HILLS": 2473,
+      "FOREST": 4206,
+      "FIELD": 8719,
+      "MOUNTAINS": 1174,
+      "WATER": 1466,
+      "RAPIDS": 19,
+      "BRUSH": 762
+    },
+    "excluded_rooms_by_reason": {
+      "indoor_subterranean_underwater_or_undefined_sector": 2214,
+      "other_elevation": 181
+    },
+    "restored_after_inference_cells": 1237,
+    "policy": "Supplied z=0 surface terrain, including native CITY and RAPIDS, is authoritative. It is applied last after river normalization and manual waterway guides. No image-derived process can overwrite a retained game-map cell. Fenlon-derived terrain supplies other cells only.",
+    "omitted": [
+      "INDOORS",
+      "walls",
+      "doors and secret exits",
+      "real exit connections",
+      "cave/tunnel/underwater sectors",
+      "other elevations",
+      "trail overlays",
+      "room names and labels",
+      "lighting",
+      "objects and NPCs"
+    ],
+    "surface_filter_limit": "Surface is defined by z=0 and the supplied terrain type; natural terrain is no longer rejected because of darkness or wording in its room name.",
+    "input_is_terrain_only_extract": true,
+    "original_source_sha256": "df9bcd380c17cd0494a7974ee035af108f155c8efcdcaead6813d2e38f76a234",
+    "final_mismatches": 0
+  },
+  "alignment": {
+    "west_edge": -6,
+    "east_edge": 721,
+    "south_edge": -271,
+    "north_edge": 21,
+    "columns": 727,
+    "rows": 292,
+    "cell_size_map_units": 1,
+    "cell_origin": "southwest corner, matching MMapper room terrain quads",
+    "row_order": "north-to-south",
+    "column_order": "west-to-east",
+    "cell_coordinate": "x = -6 + column; y = 20 - row",
+    "pixel_to_map": "x = -6 + pixel_x*727/3194; y = 21 - pixel_y*292/1287",
+    "physical_miles_per_cell": null
+  },
+  "policy": "Native public game terrain and visual road directions have final priority. Fenlon-derived terrain supplies other surface cells. No walls, doors, real exit destinations, server IDs, labels, lighting, mobs or items. Review exits are synthetic."
+}
