@@ -2,6 +2,7 @@
 // Copyright (C) 2026 The MMapper Authors
 
 #include "display/TerrainEdges.h"
+#include "display/TerrainGardens.h"
 
 #include <bit>
 #include <cassert>
@@ -32,6 +33,23 @@ int main()
     assert(hasBank(Sector::URBAN));
     assert(hasBank(Neighbours{Sector::WATER, Sector::MARSH, Sector::WATER, Sector::UNKNOWN}));
 
+    // City paving is a continuation, including exits without a ROAD flag.
+    // Doors/no-exit walls still block it; unrelated sectors keep the old rule.
+    for (unsigned side = 0; side < 4; ++side) {
+        const uint32_t bit = 1u << side;
+        for (uint32_t walls = 0; walls < 16; ++walls) {
+            for (uint32_t peerMask = 0; peerMask < 16; ++peerMask) {
+                assert(routePeerConnection(Sector::URBAN, peerMask, side, walls)
+                       == ((walls & bit) ? 0u : bit));
+                assert(routePeerConnection(Sector::ROAD, peerMask, side, walls) == 0u);
+                for (const auto peer : {Sector::FIELD, Sector::HILLS, Sector::INDOORS}) {
+                    const bool joins = !(walls & bit) && (peerMask & (1u << (side ^ 1u)));
+                    assert(routePeerConnection(peer, peerMask, side, walls) == (joins ? bit : 0u));
+                }
+            }
+        }
+    }
+
     // Identical joining widths from both sides, including road -> trail.
     static_assert(std::bit_cast<uint32_t>(joinHalfWidth(true, Sector::ROAD))
                   == std::bit_cast<uint32_t>(halfWidth(true)));
@@ -58,8 +76,9 @@ int main()
     assert(BANK != ROAD && ROAD != TRAIL && TRAIL != ROAD_BASE);
     for (unsigned side = 0; side < 4; ++side) {
         assert((flowRotation(side, false) + 2u) % 4u == flowRotation(side, true));
-        assert(flowVariant(12345u, side) == flowVariant(12345u, side));
-        assert(flowVariant(12345u, side) < 24u);
+        // Existing outgoing and opposite-side incoming flags select the same
+        // physical direction; the shader samples adjoining ribbon halves.
+        assert(flowRotation(side, false) == flowRotation(side ^ 1u, true));
     }
     // North enters southward; east leaves eastward (clockwise quarter turn).
     static_assert(flowRotation(0, true) == 2u);
@@ -70,6 +89,39 @@ int main()
     for (uint32_t id = 1; id < 10000; ++id) {
         assert(seed(id) <= 65535u);
         varied |= seed(id) != seed(id - 1);
+    }
+    // Twelve actual square garden sprites, stable per room and overlapping.
+    for (unsigned side = 0; side < 4; ++side) {
+        for (uint32_t id = 0; id < 100; ++id) {
+            const std::array<float, 4> clearances{0.24f, 0.24f, 0.24f, 0.24f};
+            const auto plants = terrain_gardens::sprites(id, side, 0.24f, clearances);
+            const auto again = terrain_gardens::sprites(id, side, 0.24f, clearances);
+            assert(plants.size() == 12);
+            for (std::size_t i = 0; i < plants.size(); ++i) {
+                const auto &plant = plants[i];
+                assert(std::bit_cast<uint32_t>(plant.x) == std::bit_cast<uint32_t>(again[i].x)
+                       && std::bit_cast<uint32_t>(plant.y) == std::bit_cast<uint32_t>(again[i].y)
+                       && plant.variant == again[i].variant
+                       && std::bit_cast<uint32_t>(plant.size)
+                              == std::bit_cast<uint32_t>(again[i].size));
+                const float half = plant.size * 0.5f;
+                assert(plant.x - half >= 0.f && plant.x + half <= 1.f);
+                assert(plant.y - half >= 0.f && plant.y + half <= 1.f);
+                assert(plant.variant < 6 && plant.size >= 0.18f && plant.size <= 0.221f);
+                const float along = side < 2 ? plant.x : plant.y;
+                assert(along - half > 0.24f && along + half < 0.76f);
+                if (i != 0) {
+                    const auto &previous = plants[i - 1];
+                    const float dx = previous.x - plant.x;
+                    const float dy = previous.y - plant.y;
+                    const float reach = (previous.size + plant.size) * 0.5f;
+                    assert(dx * dx + dy * dy < reach * reach);
+                }
+            }
+            const auto other = terrain_gardens::sprites(id + 1, side, 0.24f, clearances);
+            assert(std::bit_cast<uint32_t>(plants[0].x) != std::bit_cast<uint32_t>(other[0].x)
+                   || std::bit_cast<uint32_t>(plants[0].y) != std::bit_cast<uint32_t>(other[0].y));
+        }
     }
     assert(varied);
 }

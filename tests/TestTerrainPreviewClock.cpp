@@ -13,9 +13,11 @@
 
 #include <QApplication>
 #include <QCheckBox>
-#include <QComboBox>
 #include <QDockWidget>
+#include <QPixmap>
+#include <QPushButton>
 #include <QSignalBlocker>
+#include <QSlider>
 #include <QSpinBox>
 #include <QTest>
 #include <QTimer>
@@ -40,6 +42,9 @@ int main(int argc, char **argv)
     auto *timer = dock->findChild<QTimer *>("TerrainPreviewClockTimer");
     assert(enabled && timer);
     timer->stop();
+    auto *paused = dock->findChild<QCheckBox *>("TerrainPreviewClockPaused");
+    assert(paused);
+    paused->setChecked(true);
     enabled->setChecked(true);
     const auto set = [&](int y, int mo, int d, int h, int mi) {
         const std::array<QSignalBlocker, 5> blockers{QSignalBlocker{year},
@@ -97,11 +102,21 @@ int main(int argc, char **argv)
     hour->setValue(0);
     expect(2900, 5, 12, 0, 10); // typing/setValue is an edit, not a wrap
     set(2900, 12, 30, 23, 22);
-    auto *speed = dock->findChild<QComboBox *>("TerrainPreviewClockSpeed");
-    assert(speed);
-    speed->setCurrentIndex(speed->findData(60));
-    assert(QMetaObject::invokeMethod(timer, "timeout", Qt::DirectConnection));
-    expect(2901, 1, 1, 0, 22);
+    auto *speed = dock->findChild<QSlider *>("TerrainPreviewClockSpeed");
+    assert(speed && speed->value() == 0);
+    // Reverse is immediate to the left; a real short timer interval at maximum
+    // reverse must borrow into the previous date without touching the live clock.
+    set(2901, 1, 1, 0, 0);
+    speed->setValue(-100);
+    paused->setChecked(false);
+    QTest::qWait(110);
+    paused->setChecked(true);
+    assert(year->value() == 2900 && month->value() == 12 && day->value() == 30);
+    auto *normal = dock->findChild<QPushButton *>("TerrainPreviewClockNormalSpeed");
+    assert(normal);
+    normal->click();
+    assert(speed->value() == 0 && !paused->isChecked());
+    paused->setChecked(true);
     // Displayed time is the actual MumeMoment time, with no one-hour shift.
     set(2900, 1, 15, 8, 30);
     minute->stepUp();
@@ -159,6 +174,11 @@ int main(int argc, char **argv)
             duskMinutes += timeOfDay == MumeTimeEnum::DUSK ? 1u : 0u;
         }
         assert(dawnMinutes == MUME_MINUTES_PER_HOUR && duskMinutes == MUME_MINUTES_PER_HOUR);
+    }
+    if (argc == 2) {
+        dock->resize(390, 530);
+        QApplication::processEvents();
+        assert(dock->grab().save(QString::fromLocal8Bit(argv[1])));
     }
     dock->hide();
     assert(!enabled->isChecked() && !seen.back());

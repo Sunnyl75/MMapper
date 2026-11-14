@@ -2,16 +2,24 @@
 // Copyright (C) 2026 The MMapper Authors
 #include "TerrainPreviewClock.h"
 
+#include "TerrainPreviewPlayback.h"
+
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
+#include <memory>
 #include <utility>
 
 #include <QCheckBox>
-#include <QComboBox>
 #include <QDockWidget>
+#include <QElapsedTimer>
 #include <QFormLayout>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QPushButton>
 #include <QSignalBlocker>
+#include <QSlider>
 #include <QSpinBox>
 #include <QTimer>
 #include <QWidget>
@@ -57,7 +65,18 @@ QDockWidget *createTerrainPreviewClock(QWidget *parent,
     auto *const day = new StepSpinBox(widget);
     auto *const hour = new StepSpinBox(widget);
     auto *const minute = new StepSpinBox(widget);
-    auto *const speed = new QComboBox(widget);
+    auto *const speed = new QSlider(Qt::Horizontal, widget);
+    auto *const paused = new QCheckBox(QObject::tr("Pause"), widget);
+    paused->setObjectName("TerrainPreviewClockPaused");
+    auto *const rateLabel = new QLabel(widget);
+    rateLabel->setObjectName("TerrainPreviewClockRate");
+    speed->setRange(-100, 100);
+    speed->setValue(0);
+    speed->setTickPosition(QSlider::TicksBelow);
+    speed->setTickInterval(25);
+    speed->setToolTip(
+        QObject::tr("Centre: normal forward game time. Left: reverse, faster farther left. "
+                    "Right: faster forward. Neither direction uses slow motion."));
     const std::array<QSpinBox *, 5> controls{year, month, day, hour, minute};
     const std::array<const char *, 5> names{"Year", "Month", "Day", "Hour", "Minute"};
     for (std::size_t i = 0; i < controls.size(); ++i)
@@ -73,17 +92,17 @@ QDockWidget *createTerrainPreviewClock(QWidget *parent,
     hour->setRange(0, MUME_HOURS_PER_DAY - 1);
     hour->setValue(12);
     minute->setRange(0, MUME_MINUTES_PER_HOUR - 1);
-    speed->addItem(QObject::tr("Paused"), 0);
-    speed->addItem(QObject::tr("1 game minute / second"), 1);
-    speed->addItem(QObject::tr("10 game minutes / second"), 10);
-    speed->addItem(QObject::tr("1 game hour / second"), 60);
     layout->addRow(enabled);
     layout->addRow(QObject::tr("Year"), year);
     layout->addRow(QObject::tr("Month"), month);
     layout->addRow(QObject::tr("Day"), day);
     layout->addRow(QObject::tr("Hour (00–23)"), hour);
     layout->addRow(QObject::tr("Minute"), minute);
-    layout->addRow(QObject::tr("Advance"), speed);
+    layout->addRow(QObject::tr("Playback"), speed);
+    layout->addRow(rateLabel, paused);
+    auto *const normal = new QPushButton(QObject::tr("Normal speed"), widget);
+    normal->setObjectName("TerrainPreviewClockNormalSpeed");
+    layout->addRow(normal);
     dock->setWidget(widget);
 
     const auto current = [=]() {
@@ -120,19 +139,48 @@ QDockWidget *createTerrainPreviewClock(QWidget *parent,
     hour->setStepper(
         [=](int steps) { advance(static_cast<int64_t>(steps) * MUME_MINUTES_PER_HOUR); });
     minute->setStepper([=](int steps) { advance(steps); });
-    QObject::connect(enabled, &QCheckBox::toggled, dock, [=](bool) { apply(); });
-    for (auto *control : controls)
-        QObject::connect(control, qOverload<int>(&QSpinBox::valueChanged), dock, [=](int) {
-            apply();
-        });
     auto *const timer = new QTimer(dock);
     timer->setObjectName("TerrainPreviewClockTimer");
-    timer->setInterval(1000);
-    QObject::connect(timer, &QTimer::timeout, dock, [=]() {
-        if (enabled->isChecked() && speed->currentData().toInt() != 0)
-            advance(speed->currentData().toInt());
+    timer->setInterval(50);
+    auto elapsed = std::make_shared<QElapsedTimer>();
+    auto playback = std::make_shared<terrain_preview::Playback>();
+    const auto syncPlayback = [=]() {
+        playback->reset();
+        elapsed->start();
+        const double rate = terrain_preview::rate(speed->value());
+        rateLabel->setText(QObject::tr("%1× %2")
+                               .arg(std::abs(rate), 0, 'g', 4)
+                               .arg(rate < 0.0 ? QObject::tr("reverse") : QObject::tr("forward")));
+        if (enabled->isChecked() && !paused->isChecked())
+            timer->start();
+        else
+            timer->stop();
+    };
+    QObject::connect(enabled, &QCheckBox::toggled, dock, [=](bool) {
+        syncPlayback();
+        apply();
     });
-    timer->start();
+    QObject::connect(paused, &QCheckBox::toggled, dock, [=](bool) { syncPlayback(); });
+    QObject::connect(speed, &QSlider::valueChanged, dock, [=](int) { syncPlayback(); });
+    QObject::connect(normal, &QPushButton::clicked, dock, [=]() {
+        speed->setValue(0);
+        paused->setChecked(false);
+        syncPlayback();
+    });
+    for (auto *control : controls)
+        QObject::connect(control, qOverload<int>(&QSpinBox::valueChanged), dock, [=](int) {
+            playback->reset();
+            elapsed->restart();
+            apply();
+        });
+    QObject::connect(timer, &QTimer::timeout, dock, [=]() {
+        if (!enabled->isChecked() || paused->isChecked())
+            return;
+        const auto minutes = playback->advance(elapsed->restart(), speed->value());
+        if (minutes != 0)
+            advance(minutes);
+    });
+    syncPlayback();
     QObject::connect(dock, &QDockWidget::visibilityChanged, dock, [=](bool visible) {
         if (!visible)
             enabled->setChecked(false);

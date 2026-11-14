@@ -182,6 +182,8 @@ public:
         NamedConfig<bool> roomIllumination{"ROOM_ILLUMINATION", true};
         NamedConfig<int> roomLightStrength{"ROOM_LIGHT_STRENGTH", 100};
         NamedConfig<int> roomLightFlicker{"ROOM_LIGHT_FLICKER", 35};
+        NamedConfig<int> terrainReflections{"TERRAIN_REFLECTIONS", 1};
+        NamedConfig<int> terrainReflectionStrength{"TERRAIN_REFLECTION_STRENGTH", 100};
         NamedConfig<bool> seasonalTerrain{"SEASONAL_TERRAIN", true};
         NamedConfig<bool> trilinearFiltering{"TRILINEAR_FILTERING", true};
         NamedConfig<bool> showMissingMapId{"SHOW_MISSING_MAPID", false};

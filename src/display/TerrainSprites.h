@@ -210,6 +210,14 @@ constexpr std::array<Sprite, 6> water(const uint32_t roomId)
     for (uint32_t i = 0; i < result.size(); ++i) {
         auto sprite = anchors[i];
         const auto hash = mix(roomId ^ mix(i + 0x52495050u));
+        // Six jittered cells cover the whole room, including isolated water
+        // against walls. Unconstrained anchors can leave one end almost bare.
+        sprite.x = (static_cast<float>(i % 2u) + 0.32f
+                    + 0.36f * static_cast<float>((hash >> 8) & 255u) / 256.f)
+                   / 2.f;
+        sprite.y = (static_cast<float>(i / 2u) + 0.30f
+                    + 0.40f * static_cast<float>((hash >> 16) & 255u) / 256.f)
+                   / 3.f;
         sprite.size = 1.25f + 0.4f * static_cast<float>(hash & 255u) / 256.f;
         sprite.variant = (i + mix(roomId)) % NUM_VARIANTS;
         result[i] = sprite;

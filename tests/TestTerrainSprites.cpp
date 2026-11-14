@@ -169,6 +169,13 @@ int main()
             waterVariants |= 1u << patch.variant;
         }
         require(waterVariants == 63u);
+        unsigned coverage = 0;
+        for (const auto &patch : water) {
+            const auto column = static_cast<unsigned>(patch.x * 2.f);
+            const auto row = static_cast<unsigned>(patch.y * 3.f);
+            coverage |= 1u << (row * 2u + column);
+        }
+        require(coverage == 63u); // Every part gets its own patch, even without neighbours.
         require(sameFloat(water.front().x, terrain_sprites::water(id).front().x));
     }
     // Every wall combination: all retained foreground quads stay whole on

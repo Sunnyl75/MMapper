@@ -3,6 +3,11 @@
 precision highp int;
 uniform sampler2DArray uTexture;
 uniform vec4 uColor;
+uniform ivec4 uReflectionAtlas; // colour/data base, mode, pack lookup layer + 1
+uniform ivec4 uReflectionMaterials; // shallows, rapids, mountain colour tile bases
+uniform vec4 uReflectionLight;
+uniform vec4 uReflectionColor;
+uniform vec4 uMoonTint; // Shared moon RGB and phase/horizon envelope.
 uniform vec4 uTerrainShadow;
 uniform vec4 uSkyTint; // Highlight grade; alpha zero disables it.
 in vec2 vTreeUV;
@@ -55,18 +60,187 @@ vec4 crossfade(vec4 a, vec4 b, float fade) {
     return vec4(alpha > 0.0 ? rgb / alpha : vec3(0.0), alpha);
 }
 // Family indices match display/TerrainMaterials.h; each family is 32 cells.
-vec4 material(int family, int variant, vec2 uv) {
-    ivec2 seasons = (vSurface.z & 256) != 0 && family < 14 ? ivec2(2) : vGroundSeasons;
-    int base = vSharedBase + family * 32 + variant;
-    if (vGroundMix <= 0.0) return sampleTile(base + seasons.x * 6, uv);
-    if (vGroundMix >= 1.0) return sampleTile(base + seasons.y * 6, uv);
-    return crossfade(sampleTile(base + seasons.x * 6, uv),
-                     sampleTile(base + seasons.y * 6, uv), vGroundMix);
+vec4 packRecord(ivec2 at) {
+    return texelFetch(uTexture,ivec3(at,uReflectionAtlas.w-1),0);
+}
+int recordBase(vec4 record) {
+    ivec2 bytes = ivec2(round(record.rg*255.0));
+    return bytes.x+bytes.y*256;
+}
+int familyBase(int family) {
+    return uReflectionAtlas.w > 0 ? recordBase(packRecord(ivec2(family,vSharedBase)))
+                                 : vSharedBase+family*32;
+}
+
+// Optional details are resolved from the same immutable per-pack lookup.
+// No map scan, extra draw pass or per-area shader branch is needed.
+vec4 detailRecord(int column) {
+    return uReflectionAtlas.w > 0 ? packRecord(ivec2(column,vSharedBase)) : vec4(0);
 }
 vec2 continuousUV(vec2 world) {
     // Mirrored repetition meets exactly at the edge, without relying on a
     // generated image being mathematically seamless or restarting per room.
     return abs(fract(world * 0.47) * 2.0 - 1.0);
+}
+
+uint surfaceHash(ivec2 node) {
+    uint h = uint(node.x)*0x9e3779b9u ^ uint(node.y)*0x85ebca6bu;
+    h ^= h >> 16;
+    h *= 0x7feb352du;
+    return h ^ (h >> 15);
+}
+vec2 surfaceTurn(vec2 p, uint turn) {
+    if (turn == 1u) return vec2(-p.y,p.x);
+    if (turn == 2u) return -p;
+    if (turn == 3u) return vec2(p.y,-p.x);
+    return p;
+}
+// The normal road supplies earth and its existing terrain fringes. This
+// optional foreground only seeds grass within a connected centre corridor.
+float roadCentreDistance(vec2 p, int mask) {
+    if (mask == 5 || mask == 9 || mask == 6 || mask == 10) {
+        vec2 corner = vec2((mask & 4) != 0 ? 1.0 : 0.0,
+                           (mask & 1) != 0 ? 1.0 : 0.0);
+        return abs(length(p-corner)-0.5);
+    }
+    float distance = 2.0;
+    for (int side = 0; side < 4; ++side) {
+        if ((mask & (1 << side)) == 0) continue;
+        vec2 end = side == 0 ? vec2(0.5,1.0) : side == 1 ? vec2(0.5,0.0)
+                 : side == 2 ? vec2(1.0,0.5) : vec2(0.0,0.5);
+        vec2 arm = end-vec2(0.5);
+        vec2 nearest = vec2(0.5)+arm*clamp(dot(p-vec2(0.5),arm)/0.25,0.0,1.0);
+        distance = min(distance,length(p-nearest));
+    }
+    return distance;
+}
+// One sequence of anchors runs along the road, rather than clipping two
+// rows out of a two-dimensional scatter grid. Hash only fixed map positions.
+void addRoadTuft(inout vec4 result, int base, vec2 anchor, vec2 tangent,
+                 bool boundary, vec2 dx, vec2 dy) {
+    uint h = surfaceHash(ivec2(floor(anchor*4096.0+0.5)));
+    vec2 jitter = vec2(float((h >> 8) & 255u),float((h >> 16) & 255u))/255.0-0.5;
+    // Canonical normal signs give both owners the same shared-edge tuft.
+    vec2 normal = boundary ? abs(tangent.yx) : vec2(-tangent.y,tangent.x);
+    vec2 centre = anchor+normal*jitter.x*0.055;
+    if (!boundary) centre += tangent*jitter.y*0.025;
+    uint turn = (h >> 24) & 3u;
+    vec2 uv = surfaceTurn((vWorldUV-centre)/0.56,turn)+0.5;
+    if (any(lessThan(uv,vec2(0))) || any(greaterThan(uv,vec2(1)))) return;
+    vec4 tuft = sampleTileGrad(base+int(h%6u),uv,
+                               surfaceTurn(dx,turn),surfaceTurn(dy,turn));
+    // Accumulate premultiplied colour, converting once after all candidates.
+    result.rgb += tuft.rgb*tuft.a*(1.0-result.a);
+    result.a += tuft.a*(1.0-result.a);
+}
+vec4 roadCentreGrass(vec2 p) {
+    vec4 record = detailRecord(200);
+    int mask = (vSurface.z & 15) & ~vWallMask;
+    vec2 dx = dFdx(vWorldUV)/0.56, dy = dFdy(vWorldUV)/0.56;
+    float corridor = 1.0-smoothstep(0.16,0.25,roadCentreDistance(p,mask));
+    if (record.a < 0.5 || mask == 0 || corridor <= 0.0) return vec4(0);
+    vec2 origin = vWorldUV-p;
+    int base = recordBase(record);
+    vec4 result = vec4(0);
+    bool bend = mask == 5 || mask == 9 || mask == 6 || mask == 10;
+    if (bend) {
+        vec2 corner = vec2((mask & 4) != 0 ? 1.0 : 0.0,
+                           (mask & 1) != 0 ? 1.0 : 0.0);
+        vec2 sign = vec2(1.0)-2.0*corner;
+        // Eleven internal anchors plus two shared half-tufts = twelve.
+        for (int station = 1; station < 12; ++station) {
+            float angle = float(station)*1.570796327/12.0;
+            vec2 radius = vec2(cos(angle),sin(angle));
+            vec2 anchor = origin+corner+sign*radius*0.5;
+            vec2 tangent = sign*vec2(-radius.y,radius.x);
+            addRoadTuft(result,base,anchor,tangent,false,dx,dy);
+        }
+    } else {
+        addRoadTuft(result,base,origin+vec2(0.5),vec2(1,0),false,dx,dy);
+        for (int side = 0; side < 4; ++side) {
+            if ((mask & (1 << side)) == 0) continue;
+            vec2 tangent = side == 0 ? vec2(0,1) : side == 1 ? vec2(0,-1)
+                         : side == 2 ? vec2(1,0) : vec2(-1,0);
+            for (int station = 1; station < 6; ++station) {
+                vec2 anchor = origin+vec2(0.5)+tangent*(float(station)/12.0);
+                addRoadTuft(result,base,anchor,tangent,false,dx,dy);
+            }
+        }
+    }
+    // Interior stamps fade before their room edge. The single shared stamp
+    // below crosses it unchanged, including straight-to-bend connections.
+    vec2 edge = min(p,vec2(1)-p);
+    result *= smoothstep(0.0,0.045,min(edge.x,edge.y));
+    for (int side = 0; side < 4; ++side) {
+        if ((mask & (1 << side)) == 0) continue;
+        vec2 tangent = side == 0 ? vec2(0,1) : side == 1 ? vec2(0,-1)
+                     : side == 2 ? vec2(1,0) : vec2(-1,0);
+        vec2 anchor = origin+vec2(0.5)+tangent*0.5;
+        addRoadTuft(result,base,anchor,tangent,true,dx,dy);
+    }
+    if (result.a > 0.0) result.rgb /= result.a;
+    result.a *= corridor*(1.0-vWinter);
+    return result;
+}
+
+vec4 surfaceTile(int base, int variant, vec2 uv, vec2 dx, vec2 dy) {
+    ivec2 seasons = (vSurface.z & 256) != 0 ? ivec2(2) : vGroundSeasons;
+    if (vGroundMix <= 0.0)
+        return sampleTileGrad(base+seasons.x*6+variant,uv,dx,dy);
+    if (vGroundMix >= 1.0)
+        return sampleTileGrad(base+seasons.y*6+variant,uv,dx,dy);
+    return crossfade(sampleTileGrad(base+seasons.x*6+variant,uv,dx,dy),
+                     sampleTileGrad(base+seasons.y*6+variant,uv,dx,dy),vGroundMix);
+}
+// TERRAIN_REFLECTION_FUNCTIONS
+vec4 material(int family, int variant, vec2 uv) {
+    ivec2 seasons = (vSurface.z & 256) != 0 && family < 14 ? ivec2(2) : vGroundSeasons;
+    int base = familyBase(family) + variant;
+    vec4 art;
+    if (vGroundMix <= 0.0) art = sampleTile(base + seasons.x * 6, uv);
+    else if (vGroundMix >= 1.0) art = sampleTile(base + seasons.y * 6, uv);
+    else art = crossfade(sampleTile(base + seasons.x * 6, uv),
+                         sampleTile(base + seasons.y * 6, uv), vGroundMix);
+    // Marsh pools also exist in the opaque underpaint and bank materials.
+    if (family == 7 && terrainReflectionsEnabled() && reflectionProfile(base) == 1) {
+        vec4 data = reflectionData(1,base+seasons.x*6,uv,dFdx(uv),dFdy(uv));
+        if (vGroundMix > 0.0)
+            data = mix(data,reflectionData(1,base+seasons.y*6,uv,dFdx(uv),dFdy(uv)),vGroundMix);
+        art.rgb = reflectSurface(art.rgb,data,0u,false,1);
+    }
+    return art;
+}
+
+vec3 scatteredMaterial(int base, vec2 world, bool water) {
+    // Four overlapping authored samples share world-space nodes. Adjacent
+    // rooms see the same result, without mirrored stones forming diamonds.
+    // Explicit gradients keep mip selection independent of hash/UV changes.
+    vec2 p = world*1.88;
+    ivec2 origin = ivec2(floor(p));
+    vec2 blend = smoothstep(vec2(0.10),vec2(0.90),fract(p));
+    float scale = water ? 0.16 : 0.5;
+    vec2 dx = dFdx(p)*scale, dy = dFdy(p)*scale;
+    vec3 color = vec3(0.0);
+    for (int y = 0; y < 2; ++y) {
+        for (int x = 0; x < 2; ++x) {
+            ivec2 node = origin+ivec2(x,y);
+            uint h = surfaceHash(node);
+            uint turn = (h >> 8) & 3u;
+            // Underpaint uses the broad oval patch's opaque core. RGB in
+            // transparent sprite gutters is undefined after atlas packing.
+            vec2 centre = water ? vec2(0.5,0.6) : vec2(0.5);
+            vec2 uv = centre+surfaceTurn((p-vec2(node))*scale,turn);
+            float weight = (x == 0 ? 1.0-blend.x : blend.x)
+                         * (y == 0 ? 1.0-blend.y : blend.y);
+            vec3 part = surfaceTile(base,water ? 3 : int(h%6u),uv,
+                        surfaceTurn(dx,turn),surfaceTurn(dy,turn)).rgb;
+            if (water && terrainReflectionsEnabled() && reflectionProfile(base) == 0)
+                part = reflectWater(part,seasonalWaterData(base,3,uv,surfaceTurn(dx,turn),
+                                                           surfaceTurn(dy,turn)),turn,false);
+            color += weight*part;
+        }
+    }
+    return color;
 }
 
 // Sector IDs and direction order are defined in display/TerrainEdges.h.
@@ -75,7 +249,15 @@ int across(int dir) { return (vSurface.x >> ((dir + 1) * 4)) & 15; }
 bool grassy(int sector) {
     return sector == 1 || sector == 2 || sector == 3 || sector == 5 || sector == 10;
 }
+int groundFamily(int sector);
 vec3 sectorColor(int sector) {
+    if (uReflectionAtlas.w > 0 && vSharedBase > 0) {
+        int column = 32+groundFamily(sector)*4;
+        vec4 before = packRecord(ivec2(column+vGroundSeasons.x,vSharedBase));
+        vec4 after = packRecord(ivec2(column+vGroundSeasons.y,vSharedBase));
+        if (before.a > 0.0 && after.a > 0.0)
+            return mix(before.rgb,after.rgb,vGroundMix);
+    }
     vec3 color = vec3(0.42, 0.38, 0.29);
     if (sector == 1) color = vBaseColor;
     if (sector == 2) color = vBaseColor * vec3(0.70, 0.75, 0.70);
@@ -127,7 +309,7 @@ int borderVariant(int sector) {
 }
 vec3 groundColor(int sector, vec2 world) {
     if (sector == 8 || sector == 13)
-        return repeatMaterial(vSharedBase/16 + (sector == 8 ? 19 : 20)*2, world).rgb;
+        return repeatMaterial(familyBase(sector == 8 ? 19 : 20)/16, world).rgb;
     vec4 art = material(groundFamily(sector), 0, continuousUV(world));
     return mix(sectorColor(sector), art.rgb, art.a);
 }
@@ -137,6 +319,30 @@ vec3 groundFill(int sector, vec2 world) {
     vec2 uv = mix(vec2(0.22), vec2(0.78), continuousUV(world*2.0));
     vec4 art = material(groundFamily(sector), 0, uv);
     return mix(sectorColor(sector), art.rgb, art.a);
+}
+
+// Both owners sample this same world-space mixture at an open street join.
+// Use fixed earth artwork here so all-season paving and seasonal roads agree.
+vec3 cityJoinEarth(vec2 world) {
+    return sampleTile(familyBase(11)+12,mix(vec2(0.25),vec2(0.75),continuousUV(world))).rgb;
+}
+vec3 cityPaving(vec2 world) {
+    vec3 paving = repeatMaterial(familyBase(19)/16,world).rgb;
+    if (detailRecord(200).a >= 0.5)
+        paving = mix(paving,cityJoinEarth(world),0.15);
+    return paving;
+}
+vec3 cityJoinColor(vec2 world) {
+    return mix(cityPaving(world),cityJoinEarth(world),0.5);
+}
+float cityJoinWeight(vec2 p, bool paving) {
+    float weight = 0.0;
+    for (int dir = 0; dir < 4; ++dir) {
+        if ((vSurface.z & (1 << dir)) == 0 || (vWallMask & (1 << dir)) != 0) continue;
+        if (!paving && across(dir) != 8) continue;
+        weight = max(weight,1.0-smoothstep(0.0,0.18,edgeDistance(p,dir)));
+    }
+    return weight;
 }
 
 vec4 bank(vec2 p) {
@@ -207,7 +413,8 @@ vec4 route(vec2 p, bool road) {
     vec3 edge = groundColor(sector, vWorldUV);
     // A wet verge remains muddy; rock/city verges have a gravel tone.
     if (sector == 5 || sector == 6) edge = mix(edge, vec3(0.28, 0.25, 0.19), 0.5);
-    vec3 dirt = material(11, 0, continuousUV(vWorldUV)).rgb;
+    vec3 dirt = road ? scatteredMaterial(familyBase(11),vWorldUV,false)
+                     : material(11,0,continuousUV(vWorldUV)).rgb;
     if (!road) dirt *= 0.96;
     // At a blocked road edge, continue the road to the wall instead of
     // exposing a borrowed green verge. Open boundaries keep their fringe.
@@ -216,6 +423,17 @@ vec4 route(vec2 p, bool road) {
             if ((vWallMask & (1 << dir)) != 0)
                 surface = max(surface, 1.0-smoothstep(0.48,0.52,edgeDistance(p,dir)));
         }
+    }
+    // A road/trail apron supplies earth coverage only. Reusing the full
+    // road verge here exposed thin curved border-art tails outside the join.
+    if ((vWallStyle & 32768) != 0) {
+        float coverage = 0.0;
+        for (int dir = 0; dir < 4; ++dir) {
+            if ((vSurface.z & (1 << dir)) == 0) continue;
+            float along = 0.5-edgeDistance(p,dir);
+            coverage = max(coverage,smoothstep(0.04,0.20,along));
+        }
+        return vec4(dirt,surface*coverage);
     }
     vec4 result = vec4(mix(edge, dirt, surface), max(surface, verge * 0.85));
     // Illustrated roots, stones and grass are sampled along the verge. The
@@ -226,15 +444,6 @@ vec4 route(vec2 p, bool road) {
     float amount = detail.a * (1.0 - surface) * verge;
     result.rgb = mix(result.rgb, detail.rgb, amount);
     result.a = max(result.a, amount);
-    if ((vWallStyle & 32768) != 0) {
-        float coverage = 0.0;
-        for (int dir = 0; dir < 4; ++dir) {
-            if ((vSurface.z & (1 << dir)) == 0) continue;
-            float along = 0.5-edgeDistance(p,dir);
-            coverage = max(coverage,smoothstep(0.04,0.20,along));
-        }
-        result.a *= coverage;
-    }
     return result;
 }
 vec4 sampleTree(int tile)
@@ -362,10 +571,24 @@ vec4 wallCap(vec2 p, vec2 dx, vec2 dy, float depth, bool eave, ivec2 adjacent) {
     return vec4(art.rgb*bevel*rings,art.a);
 }
 vec4 gutter(float distance, float width) {
+    vec4 fringe = detailRecord(201);
+    if (fringe.a > 0.5) {
+        int rotation = (vWallStyle >> 4) & 3;
+        const vec2 axes[4] = vec2[4](vec2(1,0),vec2(0,1),vec2(-1,0),vec2(0,-1));
+        float along = dot(vWorldUV,axes[rotation]);
+        vec2 uv = vec2(fract(along*2.0),1.0-clamp(distance/width,0.0,1.0));
+        return sampleTileGrad(recordBase(fringe)+(vTiles.x & 31)%6,uv,
+            vec2(dot(dFdx(vWorldUV),axes[rotation])*2.0,-dFdx(distance)/width),
+            vec2(dot(dFdy(vWorldUV),axes[rotation])*2.0,-dFdy(distance)/width));
+    }
     float t = clamp(distance/width,0.0,1.0);
     // Both edges feather; this is a shallow channel rather than an opaque
     // rectangular frame drawn around the sprite's bounding box.
     return vec4(vec3(0.22,0.20,0.16),0.48*sin(t*3.14159265));
+}
+vec3 uprightNormal(vec2 at) {
+    float height = smoothstep(0.10,0.92,at.y);
+    return normalize(vec3((at.x-0.5)*1.4,-0.85+0.50*height,0.60+0.50*height));
 }
 float treeShadowAlpha(int tile, vec2 at) {
     float radius = 0.008+0.014*clamp(at.y,0.0,1.0);
@@ -407,8 +630,8 @@ float reliefShadowAlpha(int tile, vec2 ground, vec2 groundDx, vec2 groundDy) {
 }
 vec4 litTerrainColor()
 {
-    float light = roomIllumination(vec3(vWorldUV,vRoomLayer)).a;
-    return vec4(mix(vColor.rgb,vec3(1.0),light),vColor.a);
+    // Warm illumination must not cancel DARK or permanent-shade tints.
+    return vColor;
 }
 void shadeTerrain()
 {
@@ -427,14 +650,17 @@ void shadeTerrain()
     }
     if (vKind == 10 && (vWallStyle & 262144) != 0) {
         vec4 ripple = sampleTileGrad(vTiles.x,vTreeUV,textureDx,textureDy);
-        // Retain the bright thin crests while letting the underlying water
-        // show through the artist's blue-grey wash between those crests.
-        ripple.a *= smoothstep(0.50,0.70,dot(ripple.rgb,vec3(0.299,0.587,0.114)));
+        // Authored alpha retains the blue-grey wash as well as the crests.
         vFragmentColor = ripple*litTerrainColor()*uColor;
         return;
     }
     if (vKind == 15) {
-        vFragmentColor = repeatMaterial(vTiles.x/16, vWorldUV) * litTerrainColor() * uColor;
+        vec4 paving = repeatMaterial(vTiles.x/16,vWorldUV);
+        if ((vWallStyle & 32768) != 0 && uReflectionAtlas.w > 0) {
+            paving.rgb = mix(cityPaving(vWorldUV),cityJoinColor(vWorldUV),
+                             cityJoinWeight(vTreeUV,true));
+        }
+        vFragmentColor = paving*litTerrainColor()*uColor;
         return;
     }
 
@@ -477,9 +703,9 @@ void shadeTerrain()
         // Road-facing pixels sample precisely the same seasonal material as
         // the road base, avoiding a separately coloured pale border band.
         int variant = (vSurface.y & 65535) % 24;
-        vec4 art = sampleTileGrad(vSharedBase + 29 * 32 + variant, vTreeUV, textureDx, textureDy);
+        vec4 art = sampleTileGrad(familyBase(29) + variant, vTreeUV, textureDx, textureDy);
         float coverage = smoothstep(0.02, 0.85, art.a);
-        vec3 road = material(11, 0, continuousUV(vWorldUV)).rgb;
+        vec3 road = scatteredMaterial(familyBase(11),vWorldUV,false);
         // Subtle authored stone detail only toward the water-facing edge;
         // it can darken the material a little, never add bright highlights.
         float detail = 1.0-smoothstep(0.18,0.65,vTreeUV.y);
@@ -490,9 +716,27 @@ void shadeTerrain()
     if (vKind >= 4 && vKind <= 7) {
         vec4 texel;
         if (vKind == 7) {
-            // ROAD owns its entire room. Neighbouring ground sprites provide
-            // the only land fringe, without an invented green verge beneath.
-            texel = vec4(material(11,0,continuousUV(vWorldUV)).rgb, 1.0);
+            texel = vec4(scatteredMaterial(familyBase(11),vWorldUV,false),1.0);
+            vec4 grass = roadCentreGrass(vTreeUV);
+            int mask = (vSurface.z & 15) & ~vWallMask;
+            if (detailRecord(200).a >= 0.5 && mask != 0) {
+                // Actual field artwork supplies the turf, not a single sampled
+                // colour multiplied by the old tufts' dark blade luminance.
+                vec3 turf = groundFill(1,vWorldUV);
+                float distance = roadCentreDistance(vTreeUV,mask);
+                float irregular = 0.010*sin(dot(vWorldUV,vec2(17,11)))
+                                + 0.008*sin(dot(vWorldUV,vec2(29,-13)));
+                // Grassy shoulders leave two worn earth lanes around the broad
+                // median. All use the same connected path and existing road draw.
+                float shoulder = smoothstep(0.32+irregular,0.44+irregular,distance)
+                                 *(1.0-vWinter);
+                float coverage = max(grass.a,shoulder);
+                coverage *= 1.0-cityJoinWeight(vTreeUV,false);
+                texel.rgb = mix(texel.rgb,turf,coverage);
+            }
+            if (uReflectionAtlas.w > 0)
+                texel.rgb = mix(texel.rgb,cityJoinColor(vWorldUV),
+                                cityJoinWeight(vTreeUV,false));
         } else {
             texel = vKind == 4 ? bank(vTreeUV) : route(vTreeUV, vKind == 5);
         }
@@ -504,11 +748,10 @@ void shadeTerrain()
         return;
     }
     if (vKind == 9) {
-        // Quiet opaque undercoat: detail comes from overlapping sprite patches,
-        // not a periodically mirrored square water texture.
-        const vec3 waterColors[4] = vec3[4](vec3(0.32,0.43,0.48),
-            vec3(0.29,0.43,0.47),vec3(0.25,0.40,0.43),vec3(0.29,0.39,0.44));
-        vec3 water = mix(waterColors[vGroundSeasons.x], waterColors[vGroundSeasons.y], vGroundMix);
+        // Fill from the SAME seasonal artwork as the irregular patches. A
+        // thin spot can expose water detail, never a different flat grey wash.
+        int base = vTiles.x-vGroundSeasons.x*6;
+        vec3 water = scatteredMaterial(base,vWorldUV*0.55,true);
         vFragmentColor = vec4(water,1.0) * litTerrainColor() * uColor;
         return;
     }
@@ -540,7 +783,9 @@ void shadeTerrain()
         float depth = float((vWallStyle >> 20) & 255)/255.0;
         if (depth == 0.0) depth = 0.20;
         float inset = 1.0-vTreeUV.y;
-        float gutterDepth = (vWallStyle & 16384) != 0 ? 0.012 : 0.0;
+        float gutterDepth = (vWallStyle & 16384) != 0
+            ? (detailRecord(202).a > 0.5 ? 0.0
+               : detailRecord(201).a > 0.5 ? 0.065 : 0.012) : 0.0;
         bool eave = (vWallStyle & 131072) != 0;
         if ((vWallStyle & 2048) != 0) {
             // Same source frame for all fragments of an outside cap. Each
@@ -653,6 +898,25 @@ void shadeTerrain()
         vec3 rgb = mix(before.rgb * before.a, after.rgb * after.a, vSeasonMix);
         texel = vec4(alpha > 0.0 ? rgb / alpha : vec3(0.0), alpha);
     }
+    if ((vKind == 11 || vKind == 2 || vKind == 8) && terrainReflectionsEnabled()) {
+        int profile = reflectionProfile(vTiles.x);
+        bool targeted = (vKind == 11 && (profile == 0 || profile == 2))
+                     || (vKind == 2 && profile == 1)
+                     || (vKind == 8 && profile == 3);
+        if (targeted) {
+            vec4 data = reflectionData(profile,vTiles.x,at,textureDx,textureDy);
+            if (vSeasonMix > 0.0)
+                data = mix(data,reflectionData(profile,vTiles.y,at,textureDx,textureDy),vSeasonMix);
+            uint turn = vKind == 2 ? (4u-uint((vWallStyle >> 4) & 3)) & 3u : 0u;
+            texel.rgb = reflectSurface(texel.rgb,data,turn,(vWallStyle & 256) != 0,profile);
+        }
+    }
+    if (vKind == 11) {
+        // Preserve the source wash but make a malformed/cropped cell's very
+        // edge harmless. Never feather actual walls or room boundaries.
+        vec2 edge = min(vTreeUV,vec2(1.0)-vTreeUV);
+        texel.a *= smoothstep(0.0,0.025,min(edge.x,edge.y));
+    }
     if (vKind == 2) {
         // The image supplies the irregular edge; keep a broad opaque centre.
         texel.a *= 1.0 - smoothstep(0.38, 0.53, length(vTreeUV - vec2(0.5)));
@@ -683,9 +947,7 @@ void shadeTerrain()
             // The illustrated front faces south; crowns/summits face upward.
             // Shadow.xy is the inverse horizontal light direction / altitude.
             vec3 light = normalize(vec3(-uTerrainShadow.xy,1.0));
-            float height = smoothstep(0.10,0.92,at.y);
-            vec3 normal = normalize(vec3((at.x-0.5)*1.4,
-                                         -0.85+0.50*height,0.60+0.50*height));
+            vec3 normal = uprightNormal(at);
             float incidence = max(0.0,dot(normal,light));
             float strength = clamp(uTerrainShadow.z/0.26,0.0,1.0);
             // Preserve authored ink/colour with ample ambient fill. The same
@@ -712,11 +974,31 @@ void main()
     shadeTerrain();
     // NO_SKY_SHADOW is already packed for indoors, caves, underwater, dark
     // and permanent-shade rooms. Wall/grime/shadow artwork keeps its own tint.
-    if (uSkyTint.a <= 0.0 || uTerrainShadow.w > 0.5
+    if ((uSkyTint.a <= 0.0 && uMoonTint.a <= 0.0) || uTerrainShadow.w > 0.5
         || (vWallStyle & 8192) != 0 || vKind == 12 || vKind == 13 || vKind == 14)
         return;
-    vec4 tint = uSkyTint;
+    float unlit = 1.0;
     if (uRoomLightParams.x > 0.0)
-        tint.a *= 1.0-roomIllumination(vec3(vWorldUV,vRoomLayer)).a;
-    vFragmentColor.rgb = twilightHighlights(vFragmentColor.rgb,tint);
+        unlit -= roomIllumination(vec3(vWorldUV,vRoomLayer)).a;
+    if (uMoonTint.a > 0.0) {
+        // Use the reflection source's direction even when specularity is off.
+        // The same rounded relief proxy already used by self-shadowing gives
+        // upright sprites a moon-facing side; ground receives a flat-sky fill.
+        bool upright = vKind == 0 || (vKind == 8 && (vWallStyle & 16384) != 0);
+        vec3 normal = upright ? uprightNormal(vTreeUV) : vec3(0.0,0.0,1.0);
+        float facing = 0.55+0.45*max(dot(normal,uReflectionLight.xyz),0.0);
+        float luminance = dot(vFragmentColor.rgb,vec3(0.2126,0.7152,0.0722));
+        float ink = smoothstep(0.02,0.60,luminance);
+        float amount = clamp(0.22*uMoonTint.a*unlit*facing*ink,0.0,0.44);
+        vec3 linearColor = reflectionToLinear(vFragmentColor.rgb);
+        // Screen in linear light: retain texture contrast and near-black ink.
+        // Master's night/weather overlay is still drawn over this material.
+        vFragmentColor.rgb = reflectionToSrgb(1.0-(1.0-linearColor)
+                                               *(1.0-uMoonTint.rgb*amount));
+    }
+    if (uSkyTint.a > 0.0) {
+        vec4 tint = uSkyTint;
+        tint.a *= unlit;
+        vFragmentColor.rgb = twilightHighlights(vFragmentColor.rgb,tint);
+    }
 }

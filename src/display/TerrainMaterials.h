@@ -43,7 +43,18 @@ enum class Family : int {
     RAPIDS,
     WATER_FLOW
 };
-enum class Placement { PATCH, UPRIGHT, MATERIAL, BORDER, WALL, REPEAT, EAVE, MASONRY, FINISH };
+enum class Placement {
+    PATCH,
+    SOFT_PATCH,
+    UPRIGHT,
+    MATERIAL,
+    BORDER,
+    WALL,
+    REPEAT,
+    EAVE,
+    MASONRY,
+    FINISH
+};
 struct Sheet final
 {
     const char *filename;
@@ -64,7 +75,7 @@ inline constexpr std::array<Sheet, 32> SHEETS{
      {"terrain-brush-ground-seasons.png", Placement::PATCH},
      {"terrain-brush-seasons.png", Placement::UPRIGHT},
      {"terrain-road-seasons.png", Placement::MATERIAL},
-     {"terrain-water-patches-seasons.png", Placement::PATCH},
+     {"terrain-water-patches-seasons.png", Placement::SOFT_PATCH},
      {"terrain-borders-seasons.png", Placement::BORDER},
      {"terrain-tunnel-ground.png", Placement::PATCH},
      {"terrain-cavern-ground.png", Placement::PATCH},
@@ -82,8 +93,8 @@ inline constexpr std::array<Sheet, 32> SHEETS{
      {"terrain-doors.png", Placement::MATERIAL},
      {"terrain-death-trap.png", Placement::MATERIAL},
      {"terrain-road-shores.png", Placement::MATERIAL},
-     {"terrain-rapids-patches.png", Placement::PATCH},
-     {"terrain-water-flow.png", Placement::PATCH}}};
+     {"terrain-rapids-patches.png", Placement::SOFT_PATCH},
+     {"terrain-water-flow-ribbon.png", Placement::MATERIAL}}};
 constexpr int atlas(const int firstShared, const Family family)
 {
     return firstShared + LAYERS_PER_SHEET * static_cast<int>(family);
@@ -98,10 +109,12 @@ inline constexpr int DOOR_OTHER_SIDE = 1 << 9;
 inline constexpr int DOOR_PAIRED = 1 << 10; // A reciprocal, adjacent saved-map door.
 inline constexpr int ROUTE_APRON = 1 << 15; // Route kinds only.
 inline constexpr int WARNING_KIND = 10;
+inline constexpr int GARDEN_SPRITE = 1 << 20; // Kind 10: square rotated overhead garden image.
 inline constexpr int WALL_KIND = 12;
 inline constexpr int WALL_SHADOW_KIND = 13;
 inline constexpr int GRIME_KIND = 14;
 inline constexpr int PAVING_KIND = 15;
+inline constexpr int CITY_PAVING = 1 << 15; // Paving-kind city/road transition, never indoors.
 inline constexpr int CITY_GUTTER = 1 << 14;
 inline constexpr int SHINGLE_EAVE = 1 << 17;
 inline constexpr int WALL_DEPTH_SHIFT = 20;
@@ -117,5 +130,6 @@ inline constexpr int WATER_KIND = 9;
 inline constexpr int BORDER_KIND = 10;
 inline constexpr int WATER_PATCH_KIND = 11;
 inline constexpr int FLOW_OVERLAY = 1 << 18;   // Kind 10, independent of hazard artwork.
+inline constexpr int FLOW_INCOMING = 1 << 19;  // Sample the second half of the same ribbon.
 inline constexpr int RAPIDS_OVERLAY = 1 << 19; // Kind 11, drawn above ordinary water.
 } // namespace terrain_materials

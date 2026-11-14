@@ -215,6 +215,15 @@
       <item row="4" column="1"><widget class="QSpinBox" name="roomLightStrength"><property name="suffix"><string>%</string></property><property name="maximum"><number>100</number></property><property name="value"><number>100</number></property></widget></item>
       <item row="5" column="0"><widget class="QLabel" name="roomLightFlickerLabel"><property name="text"><string>Flicker amount</string></property><property name="buddy"><cstring>roomLightFlicker</cstring></property></widget></item>
       <item row="5" column="1"><widget class="QSpinBox" name="roomLightFlicker"><property name="suffix"><string>%</string></property><property name="toolTip"><string>Each room has its own brightness, warmth, phase and speed. Set to zero for steady light.</string></property><property name="maximum"><number>100</number></property><property name="value"><number>35</number></property></widget></item>
+      <item row="6" column="0"><widget class="QLabel" name="terrainReflectionsLabel"><property name="text"><string>Terrain reflections (experimental)</string></property></widget></item>
+      <item row="6" column="1"><widget class="QComboBox" name="terrainReflections">
+       <item><property name="text"><string>Off</string></property></item>
+       <item><property name="text"><string>Reflectivity mask</string></property></item>
+       <item><property name="text"><string>Mask and normal map</string></property></item>
+      </widget></item>
+      <item row="7" column="0"><widget class="QLabel" name="terrainReflectionStrengthLabel"><property name="text"><string>Reflection brightness</string></property></widget></item>
+      <item row="7" column="1"><widget class="QSpinBox" name="terrainReflectionStrength"><property name="suffix"><string>%</string></property><property name="maximum"><number>200</number></property><property name="value"><number>100</number></property></widget></item>
+
       <item row="2" column="0" colspan="2">
        <widget class="QCheckBox" name="seasonalTerrain">
         <property name="text"><string>Seasonal terrain</string></property>

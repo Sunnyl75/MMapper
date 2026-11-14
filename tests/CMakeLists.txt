@@ -476,15 +476,40 @@ target_link_libraries(TestTerrainEdges PRIVATE coverage_config)
 set_target_properties(TestTerrainEdges PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
 add_test(NAME TestTerrainEdges COMMAND TestTerrainEdges)
 
+# Pure sky-source checks require no Qt/OpenGL context.
+add_executable(TestTerrainMoonlight TestTerrainMoonlight.cpp)
+target_link_libraries(TestTerrainMoonlight PRIVATE coverage_config)
+set_target_properties(TestTerrainMoonlight PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainMoonlight COMMAND TestTerrainMoonlight)
+
 # Pack selection and cell-local mipmaps use Qt images but require no GL/display.
 add_executable(TestTerrainSpritePacks TestTerrainSpritePacks.cpp ../src/display/TerrainSpritePacks.cpp)
-target_link_libraries(TestTerrainSpritePacks PRIVATE Qt6::Gui coverage_config)
+target_link_libraries(TestTerrainSpritePacks PRIVATE mm_global Qt6::Gui coverage_config)
 set_target_properties(TestTerrainSpritePacks PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
 add_test(NAME TestTerrainSpritePacks COMMAND TestTerrainSpritePacks)
 
+# Name-based runtime packs use the same charset conversion as area media.
+add_executable(TestTerrainNamedPacks TestTerrainNamedPacks.cpp ../src/display/TerrainSpritePacks.cpp)
+target_link_libraries(TestTerrainNamedPacks PRIVATE mm_global Qt6::Gui coverage_config)
+set_target_properties(TestTerrainNamedPacks PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainNamedPacks COMMAND TestTerrainNamedPacks)
+
+# Optional connected-road and wall-foot art uses the existing pack loader.
+add_executable(TestTerrainPackDetails TestTerrainPackDetails.cpp ../src/display/TerrainSpritePacks.cpp)
+target_link_libraries(TestTerrainPackDetails PRIVATE mm_global Qt6::Gui coverage_config)
+set_target_properties(TestTerrainPackDetails PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainPackDetails COMMAND TestTerrainPackDetails)
+
+
+add_executable(TestTerrainRegionalPacks TestTerrainRegionalPacks.cpp ../src/display/TerrainSpritePacks.cpp)
+target_compile_definitions(TestTerrainRegionalPacks PRIVATE TERRAIN_ASSET_DIR="${CMAKE_SOURCE_DIR}/src/resources/pixmaps")
+target_link_libraries(TestTerrainRegionalPacks PRIVATE mm_global Qt6::Gui coverage_config)
+set_target_properties(TestTerrainRegionalPacks PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainRegionalPacks COMMAND TestTerrainRegionalPacks)
+
 add_executable(TestTerrainWalls TestTerrainWalls.cpp ../src/display/TerrainSpritePacks.cpp)
 target_compile_definitions(TestTerrainWalls PRIVATE TERRAIN_ASSET_DIR="${CMAKE_SOURCE_DIR}/src/resources/pixmaps")
-target_link_libraries(TestTerrainWalls PRIVATE Qt6::Gui coverage_config)
+target_link_libraries(TestTerrainWalls PRIVATE mm_global Qt6::Gui coverage_config)
 set_target_properties(TestTerrainWalls PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
 add_test(NAME TestTerrainWalls COMMAND TestTerrainWalls)
 
@@ -533,3 +558,8 @@ add_executable(TestTerrainMovementDiagnostics TestTerrainMovementDiagnostics.cpp
 target_link_libraries(TestTerrainMovementDiagnostics PRIVATE Qt6::Core coverage_config)
 set_target_properties(TestTerrainMovementDiagnostics PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
 add_test(NAME TestTerrainMovementDiagnostics COMMAND TestTerrainMovementDiagnostics)
+
+add_executable(TestTerrainMaterialMaps TestTerrainMaterialMaps.cpp ../src/display/TerrainMaterialMaps.cpp ../src/display/TerrainSpritePacks.cpp)
+target_link_libraries(TestTerrainMaterialMaps PRIVATE mm_global Qt6::Gui coverage_config)
+set_target_properties(TestTerrainMaterialMaps PROPERTIES COMPILE_FLAGS "${WARNING_FLAGS}")
+add_test(NAME TestTerrainMaterialMaps COMMAND TestTerrainMaterialMaps)

@@ -63,6 +63,23 @@ constexpr uint32_t roadShoreMask(const Neighbours &neighbours, const uint32_t wa
             mask |= 1u << side;
     return mask;
 }
+// A CITY room already supplies its street paving. An open boundary joins
+// that surface even when its exit is not separately flagged as ROAD.
+constexpr uint32_t routePeerConnection(const Sector peer,
+                                       const uint32_t peerMask,
+                                       const unsigned side,
+                                       const uint32_t walls)
+{
+    const uint32_t bit = 1u << side;
+    if (walls & bit)
+        return 0;
+    if (peer == Sector::URBAN)
+        return bit;
+    if (peer == Sector::ROAD)
+        return 0; // Existing road-to-road exit flags remain authoritative.
+    return (peerMask & (1u << (side ^ 1u))) ? bit : 0u;
+}
+
 inline constexpr int ROAD = 5;
 inline constexpr int TRAIL = 6;
 inline constexpr int ROAD_BASE = 7;
@@ -75,11 +92,11 @@ constexpr uint32_t pack(const Sector here, const Neighbours &neighbours)
     return value;
 }
 
-// The remaining eleven bits carry the first shared atlas tile. With 44
-// regional tree packs it remains below 2048, independent of shared family count.
-constexpr uint32_t withMaterials(const uint32_t sectors, const uint32_t firstTile)
+// The remaining eleven bits carry the pack-selection row (0..44).
+// The shader resolves each family through the shared lookup page.
+constexpr uint32_t withMaterials(const uint32_t sectors, const uint32_t packIndex)
 {
-    return sectors | (firstTile << 20u);
+    return sectors | (packIndex << 20u);
 }
 
 constexpr Sector neighbour(const uint32_t packed, const uint32_t direction)
@@ -119,13 +136,6 @@ constexpr unsigned flowRotation(const unsigned side, const bool incoming)
     constexpr std::array<unsigned, 4> rotations{0, 2, 3, 1};
     return (rotations.at(side) + (incoming ? 2u : 0u)) & 3u;
 }
-constexpr unsigned flowVariant(const uint32_t roomId, const unsigned side)
-{
-    // Both observations of a shared flow may use the same decorative variant;
-    // the side and saved map room ID keep it stable without server IDs.
-    return terrain_sprites::mix(roomId ^ (0x464c4f57u + side)) % 24u;
-}
-
 constexpr uint32_t seed(const uint32_t savedRoomId)
 {
     return terrain_sprites::mix(savedRoomId ^ 0x45444745u) & 65535u;

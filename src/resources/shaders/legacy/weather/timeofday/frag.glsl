@@ -113,7 +113,7 @@ void main()
     if (abs(vRoomLightPlane.z) < 0.000001) return;
     vec4 light = roomIllumination(vec3(vRoomLightPlane.xy/vRoomLightPlane.z,uRoomLightParams.w));
     float skyAlpha = vFragmentColor.a*(1.0-light.a);
-    float warmAlpha = light.a*0.24;
+    float warmAlpha = light.a*0.24*uRoomLightParams.y;
     // The cached blue channel is corner shadow; it also works in lit interiors
     // where there is no night overlay to remove.
     // A neighbouring pool fills this shade too; do not retain the former

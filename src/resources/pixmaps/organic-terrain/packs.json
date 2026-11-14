@@ -1,1 +1,9 @@
-{"superzones": {}}
+{
+  "superzones": {
+    "Lorien": "lorien-mallorn",
+    "Lórien": "lorien-mallorn",
+    "the Redhorn Pass": "alpine-rust-snow",
+    "the Shire": "shire",
+    "Shire": "shire"
+  }
+}

@@ -133,7 +133,8 @@ QString getAssetsPath()
             for (int i = 0; i < 5; ++i) {
                 if (devDir.exists(assetsDirName + "/areas")
                     || devDir.exists(assetsDirName + "/rooms")
-                    || devDir.exists(assetsDirName + "/sounds")) {
+                    || devDir.exists(assetsDirName + "/sounds")
+                    || devDir.exists(assetsDirName + "/terrain")) {
                     return devDir.absoluteFilePath(assetsDirName) + "/";
                 }
                 if (!devDir.cdUp()) {
