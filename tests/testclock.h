@@ -21,6 +21,7 @@ private Q_SLOTS:
     void getMumeMonthTest();
     void parseWeatherTest();
     void parseWeatherClockSkewTest();
+    void twilightClockSyncTest();
     void parseClockTimeTest();
     void precsionTimeoutTest();
     void moonClockTest();

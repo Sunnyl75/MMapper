@@ -4,6 +4,7 @@
 
 #include "../clock/mumemoment.h"
 #include "../display/TerrainReflections.h"
+#include "../display/TerrainTwilight.h"
 #include "../global/ChangeMonitor.h"
 #include "../global/ConfigEnums.h"
 #include "../global/RuleOf5.h"
@@ -41,7 +42,7 @@ constexpr float WEATHER_RADIUS = 14.0f;
 constexpr float WEATHER_EXTENT = 28.0f;
 constexpr float WEATHER_MASK_RADIUS_OUTER = 12.0f;
 constexpr float WEATHER_MASK_RADIUS_INNER = 8.0f;
-constexpr float TRANSITION_DURATION = 2.0f;
+constexpr float TRANSITION_DURATION = terrain_twilight::TRANSITION_DURATION;
 } // namespace WeatherConstants
 
 /**

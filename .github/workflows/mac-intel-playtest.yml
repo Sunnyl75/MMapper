@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/organic-terrain-with-tokens
+      - feature/organic-terrain-reconciled
   workflow_dispatch:
 
 permissions:
@@ -14,6 +15,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test-linux:
+    name: Linux Debug build and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          create-symlink: true
+          key: shire-playtest-linux-debug
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y qt6-base-dev qt6-base-dev-tools libqt6opengl6-dev libqt6websockets6-dev qt6-multimedia-dev qt6-svg-dev libgl1-mesa-dev qtkeychain-qt6-dev ninja-build zlib1g-dev libssl-dev
+      - name: Configure Debug
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DWITH_MAP=OFF -DWITH_WEBSOCKET=ON -DWITH_QTKEYCHAIN=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+      - name: Build application and tests
+        run: cmake --build build --parallel 2
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+        env:
+          QT_QPA_PLATFORM: offscreen
+          ASAN_OPTIONS: detect_leaks=0
+
   build:
     name: Optimised Mac Intel application
     runs-on: macos-15-intel
@@ -55,7 +80,13 @@ jobs:
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build application
-        run: cmake --build build --target mmapper --parallel
+        run: cmake --build build --parallel
+
+      - name: Run unit tests
+        run: ctest --test-dir build --output-on-failure
+        env:
+          QT_QPA_PLATFORM: offscreen
+          ASAN_OPTIONS: detect_leaks=0
 
       - name: Package application
         run: cd build && cpack

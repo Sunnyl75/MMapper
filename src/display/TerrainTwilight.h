@@ -10,6 +10,8 @@
 // Map-lighting artwork, in MUME hours. Night colour/alpha come from the
 // existing weather preference; no Earth calendar or fixed wall-clock hours.
 namespace terrain_twilight {
+// Shared with the existing weather transition: one real second is one MUME minute.
+inline constexpr float TRANSITION_DURATION = 2.f;
 using Tint = std::array<float, 4>;
 struct Sample final
 {
@@ -45,10 +47,9 @@ inline Sample sample(double hour, const double dawn, const double dusk, const Ti
         || dusk > 23.0 || dawn + 1.0 > dusk)
         return {};
     hour = std::fmod(std::fmod(hour, 24.0) + 24.0, 24.0);
-    // These are the STARTS of master's one-hour DAWN/DUSK warnings, when
-    // MumeClockWidget changes colour via MumeMoment::toTimeOfDay(). Fit the
-    // entire palette into that SAME hour: red/DAWN -> DAY, blue/DUSK -> NIGHT.
-    // No extra preceding hour or trailing fade; dusk can end at midnight.
+    // Inputs are the starts of the visual dawn/dusk transitions. Each lasts
+    // exactly one MUME hour; dusk can end at midnight. Production callers use
+    // sampleClock() below with the native clock's warning starts.
     const bool sunrise = hour >= dawn && hour < dawn + 1.0;
     const bool sunset = hour >= dusk && hour < dusk + 1.0;
     if (!sunrise && !sunset)
@@ -69,7 +70,15 @@ inline Sample sample(double hour, const double dawn, const double dusk, const Ti
     const auto &stops = sunrise ? dawnStops : duskStops;
     const double scaled = (hour - (sunrise ? dawn : dusk)) * 5.0;
     const auto segment = std::min(static_cast<std::size_t>(scaled), stops.size() - 2);
-    const float progress = static_cast<float>(scaled - static_cast<double>(segment));
+    float progress = static_cast<float>(scaled - static_cast<double>(segment));
+    if (sunset && segment == stops.size() - 2) {
+        // Preserve the last dusk colour rather than gradually covering it
+        // with night blue. Only cross into full night during the final two
+        // real seconds, reaching its endpoint exactly at the NIGHT boundary.
+        const double duration = static_cast<double>(TRANSITION_DURATION) / 60.0;
+        progress = static_cast<float>(
+            std::clamp((hour - (dusk + 1.0 - duration)) / duration, 0.0, 1.0));
+    }
     const auto tint = blend(stops[segment], stops[segment + 1], progress);
     // A smooth bell peaks halfway through the one-hour clock warning,
     // fading to zero at the start and the exact DAY/NIGHT boundary.
@@ -82,5 +91,16 @@ inline Sample sample(double hour, const double dawn, const double dusk, const Ti
                           0.5f + 0.4f * (tint[2] - 0.5f),
                           strength};
     return {tint, true, highlights};
+}
+
+inline Sample sampleClock(const double hour,
+                          const double dawnWarning,
+                          const double duskWarning,
+                          const Tint &night)
+{
+    // Master already starts its dusk tint at DUSK. Run the colours during
+    // that preceding hour and reach full darkness when the clock says NIGHT;
+    // adding another hour here would restart dusk at the night announcement.
+    return sample(hour, dawnWarning, duskWarning, night);
 }
 } // namespace terrain_twilight

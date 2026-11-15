@@ -108,5 +108,43 @@ int main()
     for (int i = 0; i < 1440; ++i)
         assert(std::abs(sample(i / 60.0, 6.0, 18.0, {0.f, 0.f, 0.f, 0.f}).highlights[3]) < 1.e-6f);
     assert(!sample(5.0, 10.0, 6.0, night).changing);
+
+    // Exercise the production clock conversion, not just the raw palette.
+    // Dusk colours occupy the preceding hour; NIGHT must already be full.
+    const auto clockColour = [&](const double hour) { return sampleClock(hour, 8.0, 18.0, night); };
+    assert(clockColour(18.5).changing && clockColour(18.5).tint[3] > 0.f);
+    assert(!clockColour(19.0).changing);
+    assert(!clockColour(19.5).changing);
+    assert(std::abs(clockColour(19.0).tint[3] - night[3]) < 1.e-6f);
+    assert(clockColour(8.0).changing);
+    assert(std::abs(clockColour(8.0).tint[3] - night[3]) < 1.e-6f);
+    assert(!clockColour(9.0).changing && clockColour(9.0).tint[3] < 1.e-6f);
+    // A zero-opacity sample still identifies animation windows. The live
+    // tick uses this path to wake an idle renderer independently of colours.
+    for (int minute = 0; minute < 1440; ++minute) {
+        const double hour = minute / 60.0;
+        const bool changing = (minute >= 8 * 60 && minute < 9 * 60)
+                              || (minute >= 18 * 60 && minute < 19 * 60);
+        assert(clockColour(hour).changing == changing);
+        assert(sampleClock(hour, 8.0, 18.0, {}).changing == changing);
+    }
+    // Keep the final violet dusk colour intact until the brief crossover.
+    // At one real second before NIGHT the crossover is halfway complete;
+    // at NIGHT it is finished, with no trailing fade or twilight highlight.
+    const auto lastViolet = clockColour(18.8).tint;
+    for (const double hour : {18.9, 18.95, 18.0 + 58.0 / 60.0})
+        for (std::size_t channel = 0; channel < 4; ++channel)
+            assert(std::abs(clockColour(hour).tint[channel] - lastViolet[channel]) < 1.e-5f);
+    const auto crossover = clockColour(18.0 + 59.0 / 60.0).tint;
+    assert(crossover[0] < lastViolet[0] && crossover[0] > night[0]);
+    assert(crossover[3] > lastViolet[3] && crossover[3] < night[3]);
+    for (std::size_t channel = 0; channel < 4; ++channel)
+        assert(std::abs(clockColour(19.0).tint[channel] - night[channel]) < 1.e-6f);
+    assert(std::abs(clockColour(19.0).highlights[3]) < 1.e-6f);
+    // A maximum-summer night begins at 23:00 and stays full across midnight.
+    assert(sampleClock(22.5, 4.0, 22.0, night).changing);
+    assert(!sampleClock(23.0, 4.0, 22.0, night).changing);
+    assert(!sampleClock(0.0, 4.0, 22.0, night).changing);
+    assert(std::abs(sampleClock(0.0, 4.0, 22.0, night).tint[3] - night[3]) < 1.e-6f);
     std::cout << "One-hour twilight colours, endpoints, highlight grade and continuous wrap passed\n";
 }
