@@ -212,6 +212,14 @@
     <file>pixmaps/terrain-water-flow-ribbon.png</file>
         <file>pixmaps/terrain-borders-seasons.png</file>
         <file>pixmaps/organic-terrain/packs.json</file>
+        <file>pixmaps/organic-terrain/moria/terrain-cave-details.png</file>
+        <file>pixmaps/organic-terrain/moria/terrain-cavern-ground.png</file>
+        <file>pixmaps/organic-terrain/moria/terrain-cavern-walls.png</file>
+        <file>pixmaps/organic-terrain/moria/terrain-doors.png</file>
+        <file>pixmaps/organic-terrain/moria/terrain-tunnel-ground.png</file>
+        <file>pixmaps/organic-terrain/moria/terrain-tunnel-walls.png</file>
+        <file>pixmaps/organic-terrain/moria/terrain-underwater-details.png</file>
+        <file>pixmaps/organic-terrain/moria/terrain-underwater-ground.png</file>
         <file>pixmaps/terrain-hills.png</file>
         <file>pixmaps/terrain-indoors.png</file>
         <file>pixmaps/terrain-mountains.png</file>
