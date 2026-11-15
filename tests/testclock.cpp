@@ -305,22 +305,25 @@ void TestClock::twilightClockSyncTest()
                                                  night);
         };
 
-        // The existing sun-dark sync anchors the clock at the beginning of
-        // our delayed visual evening. It must still animate at native NIGHT.
+        // The sun-dark announcement is full night, not the start of another
+        // dusk hour. Check every production month against the actual clock.
         clock.parseWeather(MumeTimeEnum::NIGHT, now);
         QCOMPARE(changes, 1);
         QCOMPARE(clock.getMumeMoment(now).hour, schedule.duskHour + 1);
-        QVERIFY(colour(now).changing);
-        QVERIFY(std::abs(colour(now).tint[3]) < 1.e-6f);
-        QVERIFY(colour(now + 30).tint[3] > 0.f);
+        QVERIFY(!colour(now).changing);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+            QVERIFY(std::abs(colour(now).tint[channel] - night[channel]) < 1.e-6f);
+        QVERIFY(std::abs(colour(now).highlights[3]) < 1.e-6f);
         QVERIFY(!colour(now + 60).changing);
         QVERIFY(std::abs(colour(now + 60).tint[3] - night[3]) < 1.e-6f);
 
         // Re-synchronising inside NIGHT does not emit a time-of-day change.
-        // The weather tick must wake from its actual visual window instead.
+        // It must keep full darkness rather than restarting a dusk fade.
         clock.parseWeather(MumeTimeEnum::NIGHT, now + 15);
         QCOMPARE(changes, 1);
-        QVERIFY(colour(now + 15).changing);
+        QVERIFY(!colour(now + 15).changing);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+            QVERIFY(std::abs(colour(now + 15).tint[channel] - night[channel]) < 1.e-6f);
     }
 }
 

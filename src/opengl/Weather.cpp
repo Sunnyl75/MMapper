@@ -200,9 +200,9 @@ GLWeather::GLWeather(OpenGL &gl,
                                                        schedule.dawnHour,
                                                        schedule.duskHour,
                                                        {});
-        // The evening palette runs during the first native NIGHT hour, not
-        // DUSK. Wake even when a clock sync enters that hour without changing
-        // the observer's time-of-day enum; retain one final frame at its end.
+        // Wake from the same visual schedule used to render, including after
+        // a clock sync. Retain one final frame at the DAY/NIGHT boundary so
+        // neither completed palette is left one frame short of its endpoint.
         if (!m_previewMoment && !m_data.isEmpty() && (m_skyChanging || sky.changing))
             m_animationManager.requestUpdate();
     });

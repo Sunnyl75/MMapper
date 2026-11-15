@@ -153,18 +153,15 @@ int main(int argc, char **argv)
         assert(std::abs(colour(beforeDusk).tint[3]) < 1.e-6f);
         const auto duskWarning = at(schedule.duskHour);
         assert(duskWarning.toTimeOfDay() == MumeTimeEnum::DUSK);
-        assert(!colour(duskWarning).changing);
-        assert(std::abs(colour(duskWarning).tint[3]) < 1.e-6f);
-        const auto evening = at(schedule.duskHour + 1);
-        assert(evening.toTimeOfDay() == MumeTimeEnum::NIGHT);
-        assert(colour(evening).changing && colour(evening).tint[3] < night[3]);
-        const auto dark = at((schedule.duskHour + 2) % MUME_HOURS_PER_DAY);
+        assert(colour(duskWarning).changing);
+        assert(colour(duskWarning).tint[3] < night[3]);
+        const auto dark = at(schedule.duskHour + 1);
         assert(dark.toTimeOfDay() == MumeTimeEnum::NIGHT);
         assert(!colour(dark).changing);
         assert(std::abs(colour(dark).tint[3] - night[3]) < 1.e-6f);
         // Check the production rendering schedule for all twelve months.
-        // Dawn keeps the native DAWN hour; visual dusk uses the first NIGHT
-        // hour. Do not accidentally test the older, unshifted dusk palette.
+        // Both transitions finish at the native DAY/NIGHT boundaries; there
+        // must be no extra hour of dusk after the clock announces NIGHT.
         unsigned dawnMinutes = 0, duskMinutes = 0;
         for (int minuteOfDay = 0; minuteOfDay < MUME_MINUTES_PER_DAY; ++minuteOfDay) {
             const MumeMoment moment{2900,
@@ -173,13 +170,19 @@ int main(int argc, char **argv)
                                     minuteOfDay / MUME_MINUTES_PER_HOUR,
                                     minuteOfDay % MUME_MINUTES_PER_HOUR};
             const auto timeOfDay = moment.toTimeOfDay();
-            const bool visualDusk = moment.hour == schedule.duskHour + 1;
+            const bool visualDusk = timeOfDay == MumeTimeEnum::DUSK;
             const bool warning = timeOfDay == MumeTimeEnum::DAWN || visualDusk;
             assert(colour(moment).changing == warning);
             dawnMinutes += timeOfDay == MumeTimeEnum::DAWN ? 1u : 0u;
             duskMinutes += visualDusk ? 1u : 0u;
         }
         assert(dawnMinutes == MUME_MINUTES_PER_HOUR && duskMinutes == MUME_MINUTES_PER_HOUR);
+        // Check the exact boundary, not just the controls' one-minute step.
+        const MumeMoment nightBoundary{2900, m, 14, schedule.duskHour + 1, 0};
+        assert(!colour(nightBoundary).changing);
+        for (std::size_t channel = 0; channel < 4; ++channel)
+            assert(std::abs(colour(nightBoundary).tint[channel] - night[channel]) < 1.e-6f);
+        assert(std::abs(colour(nightBoundary).highlights[3]) < 1.e-6f);
     }
     if (argc == 2) {
         dock->resize(390, 530);
