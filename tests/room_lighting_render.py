@@ -76,8 +76,8 @@ GL.glUniform4f(GL.glGetUniformLocation(program,'uRoomLightViewport'),0,0,128,64)
 inverse=(C.c_float*16)(1,0,0,0, 0,.5,0,0, 0,0,1,0, 1,.5,0,1)
 GL.glUniformMatrix4fv(GL.glGetUniformLocation(program,'uRoomLightInverse'),1,False,inverse)
 
-def render(strength=1.,flicker=.35,time=0.,live=False,tint=(.03,.04,.12,.6)):
- GL.glUniform4f(GL.glGetUniformLocation(program,'uRoomLightParams'),strength,flicker,time,0.)
+def render(strength=1.,glow=1.,time=0.,live=False,tint=(.03,.04,.12,.6)):
+ GL.glUniform4f(GL.glGetUniformLocation(program,'uRoomLightParams'),strength,glow,time,0.)
  GL.glUniform4f(GL.glGetUniformLocation(program,'uRoomLiveLight'),1.,0.,float(live),0.)
  GL.glUniform4f(GL.glGetUniformLocation(program,'uSkyTint'),*tint)
  GL.glClearColor(0,0,0,0);GL.glClear(GL.GL_COLOR_BUFFER_BIT)
@@ -98,16 +98,19 @@ check(night(64,32)==unlit(64,32))
 check(night(63,32)[3]>night(32,32)[3])
 # Cached pixels are unchanged when a renderer advances its clock. Animation
 # changes the texture on the CPU; the shader itself has no time dependence.
-check(render(flicker=0,time=0)(32,32)==render(flicker=1,time=125)(32,32))
+check(render(time=0)(32,32)==render(time=125)(32,32))
 # Lit rooms have a restrained warm tint in daylight; disabled is exactly transparent.
-day=render(tint=(0,0,0,0),flicker=0)
-check(0<day(32,32)[3]<=62)
+base_day=render(tint=(0,0,0,0),glow=1.)
+day=render(tint=(0,0,0,0),glow=1.2)
+check(0<base_day(32,32)[3]<=62)
+check(abs(day(32,32)[3]-round(base_day(32,32)[3]*1.2))<=2)
+check(day(96,32)==base_day(96,32)) # The boost cannot illuminate an unlit neighbour.
 check(day(32,32)[0]>day(32,32)[1]>day(32,32)[2])
 check(render(strength=0,tint=(0,0,0,0))(32,32)==bytes([0,0,0,0]))
 # Corner-shadow data must visibly darken the light tint even in daylight;
 # it is independent of the night overlay and cannot affect an unlit neighbor.
 grid([230,0,0,0],[0,0,0,0],shadow=80)
-shade=render(tint=(0,0,0,0))
+shade=render(tint=(0,0,0,0),glow=1.2)
 check(shade(32,32)[0]<day(32,32)[0])
 check(shade(32,32)[3]>day(32,32)[3])
 check(shade(96,32)==bytes([0,0,0,0]))
@@ -126,7 +129,8 @@ twilight=render(tint=(.76,.34,.49,.25));plain=render(strength=0,tint=(.76,.34,.4
 check(twilight(96,32)==plain(96,32))
 check(twilight(32,32)[3]<plain(32,32)[3])
 # Render the actual multiplicative room-tint and organic-terrain programs too.
-# This verifies relief of room darkness, rather than only the later sky overlay.
+# Warm illumination must preserve the room's DARK/permanent-shade tint in
+# both programs, independently of the later warm sky overlay.
 import struct
 colors=[1.,1.,1.,1., .2,.2,.25,1.]+[0.]*(1024-8)
 ubo=GL.glGenBuffers(1);GL.glBindBuffer(GL.GL_UNIFORM_BUFFER,ubo)
@@ -169,14 +173,14 @@ for name in ['room/tex/acolor','terrain']:
   GL.glUniform1f(GL.glGetUniformLocation(current,'uTerrainDay'),-1.)
   GL.glUniform4f(GL.glGetUniformLocation(current,'uTerrainShadow'),0,0,0,0)
  def surface_pixel(strength,layer=0.):
-  GL.glUniform4f(GL.glGetUniformLocation(current,'uRoomLightParams'),strength,0,0,layer)
+  GL.glUniform4f(GL.glGetUniformLocation(current,'uRoomLightParams'),strength,1,0,layer)
   GL.glClearColor(0,0,0,0);GL.glClear(GL.GL_COLOR_BUFFER_BIT)
   GL.glDrawArraysInstanced(GL.GL_TRIANGLE_STRIP,0,4,1);GL.glFinish()
   assert GL.glGetError()==GL.GL_NO_ERROR
   return bytes(GL.glReadPixels(64,32,1,1,GL.GL_RGBA,GL.GL_UNSIGNED_BYTE))
  dark=surface_pixel(0);bright=surface_pixel(1)
  check(abs(dark[0]-51)<=1)
- check(bright[0]>dark[0]+120)
+ check(bright==dark) # Artificial light must never wash away saved room darkness.
  check(surface_pixel(1,layer=1.)==dark) # Other elevations keep their own tint.
  if name=='room/tex/acolor':
   GL.glUniform1i(GL.glGetUniformLocation(current,'uRoomLightTintPass'),0)

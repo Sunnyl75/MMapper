@@ -25,8 +25,9 @@ struct PackSelection final
 {
     int trees = 0;
     // Optional fixed-role details, absent by default. Shared by any area pack.
-    int cartTracks = -1;
+    int roadCentreGrass = -1;
     int cityWallFringe = -1;
+    int cityWallGardens = -1;
     std::array<int, terrain_materials::SHEETS.size()> materials{};
     std::array<bool, terrain_materials::SHEETS.size()> available{};
     int atlas(terrain_materials::Family family) const;

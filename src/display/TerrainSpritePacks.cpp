@@ -863,10 +863,12 @@ PackSelections loadMaterialPacks(SpritePacks &sprites,
             reserved += dataLayers;
         }
         // These optional detail sheets do not change the stable family ABI.
-        // Six fixed roles, on a 3x2 grid; invalid or absent files draw nothing.
+        // Road grass and wall fringe each contain six sprites on a 3x2 grid.
+        // Invalid or absent files draw nothing.
         for (const auto &[filename, destination] :
-             {std::pair{"terrain-road-cart-tracks.png", &selection.cartTracks},
-              std::pair{"terrain-city-wall-fringe.png", &selection.cityWallFringe}}) {
+             {std::pair{"terrain-road-centre-grass.png", &selection.roadCentreGrass},
+              std::pair{"terrain-city-wall-fringe.png", &selection.cityWallFringe},
+              std::pair{"terrain-city-wall-gardens.png", &selection.cityWallGardens}}) {
             for (const auto &directory : directories) {
                 const auto path = QDir{directory}.filePath(QString::fromLatin1(filename));
                 auto source = QImage{path};
@@ -929,8 +931,9 @@ std::vector<QImage> packLookup(const SpritePacks &sprites,
         const auto &selection = selections.packs[row];
         // Keep detail records clear of family records, ground colours and the
         // reflection table. Alpha is availability; RG stores the tile base.
-        for (const auto &[column, atlas] :
-             {std::pair{200, selection.cartTracks}, std::pair{201, selection.cityWallFringe}})
+        for (const auto &[column, atlas] : {std::pair{200, selection.roadCentreGrass},
+                                            std::pair{201, selection.cityWallFringe},
+                                            std::pair{202, selection.cityWallGardens}})
             if (atlas >= 0) {
                 const int base = atlas * 16;
                 table.setPixelColor(column,

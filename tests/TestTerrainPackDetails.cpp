@@ -31,8 +31,11 @@ int main(int argc, char **argv)
     const QDir root{temporary.path()};
     require(root.mkpath("terrain/shire"));
     const auto directory = root.filePath("terrain/shire");
-    save(directory + "/terrain-road-cart-tracks.png", Qt::red);
+    QImage road{96, 64, QImage::Format_ARGB32};
+    road.fill(Qt::red);
+    require(road.save(directory + "/terrain-road-centre-grass.png"));
     save(directory + "/terrain-city-wall-fringe.png", Qt::green);
+    save(directory + "/terrain-city-wall-gardens.png", Qt::yellow);
     QImage bundled{96, 64, QImage::Format_ARGB32};
     bundled.fill(Qt::white);
     const auto global = [&](const QString &name) {
@@ -52,23 +55,27 @@ int main(int argc, char **argv)
     const auto packs = terrain_sprites::loadMaterialPacks(sprites, global);
     const auto &shire = packs.find("the Shire");
     require(packs.index("the Shire") != 0 && packs.index("SHIRE") == packs.index("the Shire"));
-    require(shire.cartTracks >= 0 && shire.cityWallFringe >= 0);
-    require(packs.find("").cartTracks < 0 && packs.find("unknown").cityWallFringe < 0);
+    require(shire.roadCentreGrass >= 0 && shire.cityWallFringe >= 0 && shire.cityWallGardens >= 0);
+    require(packs.find("").roadCentreGrass < 0 && packs.find("unknown").cityWallFringe < 0);
     const auto lookup = terrain_sprites::packLookup(sprites, packs, {});
     const auto track = lookup.front().pixelColor(200, packs.index("the Shire"));
-    require(track.alpha() == 255 && track.red() + track.green() * 256 == shire.cartTracks * 16);
+    require(track.alpha() == 255 && track.red() + track.green() * 256 == shire.roadCentreGrass * 16);
     require(lookup.front().pixelColor(201, packs.index("the Shire")).alpha() == 255);
     require(lookup.front().pixelColor(200, 0).alpha() == 0);
+    require(lookup.front().pixelColor(202, packs.index("the Shire")).alpha() == 255);
+    require(packs.find("unknown").cityWallGardens < 0);
 
     // Malformed optional art must disappear rather than borrowing another pack.
-    require(QFile::remove(directory + "/terrain-road-cart-tracks.png"));
+    require(QFile::remove(directory + "/terrain-road-centre-grass.png"));
+    require(QFile::remove(directory + "/terrain-city-wall-gardens.png"));
     QFile broken{directory + "/terrain-city-wall-fringe.png"};
     require(broken.open(QIODevice::WriteOnly) && broken.write("not PNG") == 7);
     broken.close();
     auto missingSprites = load();
     const auto missing = terrain_sprites::loadMaterialPacks(missingSprites, global);
-    require(missing.find("the Shire").cartTracks < 0
-            && missing.find("the Shire").cityWallFringe < 0);
+    require(missing.find("the Shire").roadCentreGrass < 0
+            && missing.find("the Shire").cityWallFringe < 0
+            && missing.find("the Shire").cityWallGardens < 0);
 
     // Optional input also falls through an invalid higher-priority root.
     require(root.mkpath("assets/shire"));
@@ -96,7 +103,8 @@ int main(int argc, char **argv)
         const auto &selected = actualPacks.find("the Shire");
         const auto &defaultPack = actualPacks.find("unknown");
         require(actualPacks.index("the Shire") != 0);
-        require(selected.cartTracks >= 0 && selected.cityWallFringe >= 0);
+        require(selected.roadCentreGrass >= 0 && selected.cityWallGardens >= 0
+                && selected.cityWallFringe < 0);
         using F = terrain_materials::Family;
         for (const auto family : {F::FOREST_GROUND,
                                   F::FIELD_GROUND,

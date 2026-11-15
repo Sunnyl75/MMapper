@@ -291,6 +291,8 @@
         <file>pixmaps/organic-terrain/shire/autumn.png</file>
         <file>pixmaps/organic-terrain/shire/winter.png</file>
         <file>pixmaps/organic-terrain/shire/terrain-field-ground-seasons.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-hill-ground-seasons.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-hills-seasons.png</file>
         <file>pixmaps/organic-terrain/shire/terrain-forest-ground-seasons.png</file>
         <file>pixmaps/organic-terrain/shire/terrain-field-details-seasons.png</file>
         <file>pixmaps/organic-terrain/shire/terrain-city-ground-v2.png</file>
@@ -302,7 +304,7 @@
         <file>pixmaps/organic-terrain/shire/terrain-roof-caps.png</file>
         <file>pixmaps/organic-terrain/shire/terrain-doors.png</file>
         <file>pixmaps/organic-terrain/shire/terrain-wall-finishes.png</file>
-        <file>pixmaps/organic-terrain/shire/terrain-road-cart-tracks.png</file>
-        <file>pixmaps/organic-terrain/shire/terrain-city-wall-fringe.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-road-centre-grass.png</file>
+        <file>pixmaps/organic-terrain/shire/terrain-city-wall-gardens.png</file>
     </qresource>
 </RCC>

@@ -63,6 +63,23 @@ constexpr uint32_t roadShoreMask(const Neighbours &neighbours, const uint32_t wa
             mask |= 1u << side;
     return mask;
 }
+// A CITY room already supplies its street paving. An open boundary joins
+// that surface even when its exit is not separately flagged as ROAD.
+constexpr uint32_t routePeerConnection(const Sector peer,
+                                       const uint32_t peerMask,
+                                       const unsigned side,
+                                       const uint32_t walls)
+{
+    const uint32_t bit = 1u << side;
+    if (walls & bit)
+        return 0;
+    if (peer == Sector::URBAN)
+        return bit;
+    if (peer == Sector::ROAD)
+        return 0; // Existing road-to-road exit flags remain authoritative.
+    return (peerMask & (1u << (side ^ 1u))) ? bit : 0u;
+}
+
 inline constexpr int ROAD = 5;
 inline constexpr int TRAIL = 6;
 inline constexpr int ROAD_BASE = 7;

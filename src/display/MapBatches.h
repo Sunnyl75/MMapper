@@ -23,6 +23,7 @@ struct NODISCARD LayerMeshes final
     UniqueMesh waterFlow;
     UniqueMesh terrainWalls;
     UniqueMesh roofCaps;
+    UniqueMesh wallGardens;
     UniqueMesh doorSprites;
     UniqueMesh warningSprites;
     UniqueMesh wallShadows;
@@ -69,6 +70,7 @@ struct NODISCARD LayerMeshesIntermediate final
     Fn waterFlow;
     Fn terrainWalls;
     Fn roofCaps;
+    Fn wallGardens;
     Fn doorSprites;
     Fn warningSprites;
     Fn wallShadows;

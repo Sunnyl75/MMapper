@@ -3,7 +3,7 @@ precision highp float;
 precision highp int;
 uniform sampler2D uRoomLights;
 uniform ivec4 uRoomLightGrid; // origin and extent in rooms
-uniform vec4 uRoomLightParams; // enabled, reserved, reserved, focused layer
+uniform vec4 uRoomLightParams; // enabled, warm-glow multiplier, reserved, focused layer
 uniform int uRoomLightTintPass;
 
 vec4 roomIllumination(vec3 world)

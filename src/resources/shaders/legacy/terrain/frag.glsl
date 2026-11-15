@@ -77,49 +77,6 @@ int familyBase(int family) {
 vec4 detailRecord(int column) {
     return uReflectionAtlas.w > 0 ? packRecord(ivec2(column,vSharedBase)) : vec4(0);
 }
-int clockwiseMask(int mask) {
-    return ((mask & 1) << 2) | ((mask & 4) >> 1)
-         | ((mask & 2) << 2) | ((mask & 8) >> 3);
-}
-vec4 cartTrackArt(vec2 p) {
-    vec4 record = detailRecord(200);
-    if (record.a < 0.5) return vec4(0);
-    int mask = (vSurface.z & 15) & ~vWallMask;
-    if (mask == 0) return vec4(0);
-    int count = (mask & 1) + ((mask >> 1) & 1) + ((mask >> 2) & 1) + ((mask >> 3) & 1);
-    bool straight = mask == 3 || mask == 12;
-    int canonical = count == 1 ? 1 : count == 2 ? (straight ? 3 : 5)
-                    : count == 3 ? 7 : 15;
-    int role = count == 1 ? 5 : count == 2 ? (straight ? (vSurface.y & 1) : 2)
-               : count == 3 ? 3 : 4;
-    vec2 q = p-vec2(0.5), dx = dFdx(p), dy = dFdy(p);
-    for (int turn = 0; turn < 4; ++turn) {
-        if (canonical == mask) break;
-        canonical = clockwiseMask(canonical);
-        q = vec2(-q.y,q.x);
-        dx = vec2(-dx.y,dx.x);
-        dy = vec2(-dy.y,dy.x);
-    }
-    int base = recordBase(record);
-    vec4 art = sampleTileGrad(base+role,q+0.5,dx,dy);
-    // Every room samples the same straight art at a connected boundary. Blend
-    // into its authored bend/junction inside the room, so approximate generated
-    // endpoint placement cannot make cracks between the six source roles.
-    for (int dir = 0; dir < 4; ++dir) {
-        if ((mask & (1 << dir)) == 0) continue;
-        float distance = dir == 0 ? 1.0-p.y : dir == 1 ? p.y
-                       : dir == 2 ? 1.0-p.x : p.x;
-        float weight = 1.0-smoothstep(0.01,0.13,distance);
-        vec2 uv = dir < 2 ? p : p.yx;
-        vec2 gx = dir < 2 ? dFdx(p) : dFdx(p).yx;
-        vec2 gy = dir < 2 ? dFdy(p) : dFdy(p).yx;
-        // Both ends use the same source strip at the join.
-        uv.y = min(distance,0.13);
-        art = crossfade(art,sampleTileGrad(base,uv,gx,gy),weight);
-    }
-    return art;
-}
-
 vec2 continuousUV(vec2 world) {
     // Mirrored repetition meets exactly at the edge, without relying on a
     // generated image being mathematically seamless or restarting per room.
@@ -138,6 +95,94 @@ vec2 surfaceTurn(vec2 p, uint turn) {
     if (turn == 3u) return vec2(p.y,-p.x);
     return p;
 }
+// The normal road supplies earth and its existing terrain fringes. This
+// optional foreground only seeds grass within a connected centre corridor.
+float roadCentreDistance(vec2 p, int mask) {
+    if (mask == 5 || mask == 9 || mask == 6 || mask == 10) {
+        vec2 corner = vec2((mask & 4) != 0 ? 1.0 : 0.0,
+                           (mask & 1) != 0 ? 1.0 : 0.0);
+        return abs(length(p-corner)-0.5);
+    }
+    float distance = 2.0;
+    for (int side = 0; side < 4; ++side) {
+        if ((mask & (1 << side)) == 0) continue;
+        vec2 end = side == 0 ? vec2(0.5,1.0) : side == 1 ? vec2(0.5,0.0)
+                 : side == 2 ? vec2(1.0,0.5) : vec2(0.0,0.5);
+        vec2 arm = end-vec2(0.5);
+        vec2 nearest = vec2(0.5)+arm*clamp(dot(p-vec2(0.5),arm)/0.25,0.0,1.0);
+        distance = min(distance,length(p-nearest));
+    }
+    return distance;
+}
+// One sequence of anchors runs along the road, rather than clipping two
+// rows out of a two-dimensional scatter grid. Hash only fixed map positions.
+void addRoadTuft(inout vec4 result, int base, vec2 anchor, vec2 tangent,
+                 bool boundary, vec2 dx, vec2 dy) {
+    uint h = surfaceHash(ivec2(floor(anchor*4096.0+0.5)));
+    vec2 jitter = vec2(float((h >> 8) & 255u),float((h >> 16) & 255u))/255.0-0.5;
+    // Canonical normal signs give both owners the same shared-edge tuft.
+    vec2 normal = boundary ? abs(tangent.yx) : vec2(-tangent.y,tangent.x);
+    vec2 centre = anchor+normal*jitter.x*0.055;
+    if (!boundary) centre += tangent*jitter.y*0.025;
+    uint turn = (h >> 24) & 3u;
+    vec2 uv = surfaceTurn((vWorldUV-centre)/0.56,turn)+0.5;
+    if (any(lessThan(uv,vec2(0))) || any(greaterThan(uv,vec2(1)))) return;
+    vec4 tuft = sampleTileGrad(base+int(h%6u),uv,
+                               surfaceTurn(dx,turn),surfaceTurn(dy,turn));
+    // Accumulate premultiplied colour, converting once after all candidates.
+    result.rgb += tuft.rgb*tuft.a*(1.0-result.a);
+    result.a += tuft.a*(1.0-result.a);
+}
+vec4 roadCentreGrass(vec2 p) {
+    vec4 record = detailRecord(200);
+    int mask = (vSurface.z & 15) & ~vWallMask;
+    vec2 dx = dFdx(vWorldUV)/0.56, dy = dFdy(vWorldUV)/0.56;
+    float corridor = 1.0-smoothstep(0.16,0.25,roadCentreDistance(p,mask));
+    if (record.a < 0.5 || mask == 0 || corridor <= 0.0) return vec4(0);
+    vec2 origin = vWorldUV-p;
+    int base = recordBase(record);
+    vec4 result = vec4(0);
+    bool bend = mask == 5 || mask == 9 || mask == 6 || mask == 10;
+    if (bend) {
+        vec2 corner = vec2((mask & 4) != 0 ? 1.0 : 0.0,
+                           (mask & 1) != 0 ? 1.0 : 0.0);
+        vec2 sign = vec2(1.0)-2.0*corner;
+        // Eleven internal anchors plus two shared half-tufts = twelve.
+        for (int station = 1; station < 12; ++station) {
+            float angle = float(station)*1.570796327/12.0;
+            vec2 radius = vec2(cos(angle),sin(angle));
+            vec2 anchor = origin+corner+sign*radius*0.5;
+            vec2 tangent = sign*vec2(-radius.y,radius.x);
+            addRoadTuft(result,base,anchor,tangent,false,dx,dy);
+        }
+    } else {
+        addRoadTuft(result,base,origin+vec2(0.5),vec2(1,0),false,dx,dy);
+        for (int side = 0; side < 4; ++side) {
+            if ((mask & (1 << side)) == 0) continue;
+            vec2 tangent = side == 0 ? vec2(0,1) : side == 1 ? vec2(0,-1)
+                         : side == 2 ? vec2(1,0) : vec2(-1,0);
+            for (int station = 1; station < 6; ++station) {
+                vec2 anchor = origin+vec2(0.5)+tangent*(float(station)/12.0);
+                addRoadTuft(result,base,anchor,tangent,false,dx,dy);
+            }
+        }
+    }
+    // Interior stamps fade before their room edge. The single shared stamp
+    // below crosses it unchanged, including straight-to-bend connections.
+    vec2 edge = min(p,vec2(1)-p);
+    result *= smoothstep(0.0,0.045,min(edge.x,edge.y));
+    for (int side = 0; side < 4; ++side) {
+        if ((mask & (1 << side)) == 0) continue;
+        vec2 tangent = side == 0 ? vec2(0,1) : side == 1 ? vec2(0,-1)
+                     : side == 2 ? vec2(1,0) : vec2(-1,0);
+        vec2 anchor = origin+vec2(0.5)+tangent*0.5;
+        addRoadTuft(result,base,anchor,tangent,true,dx,dy);
+    }
+    if (result.a > 0.0) result.rgb /= result.a;
+    result.a *= corridor*(1.0-vWinter);
+    return result;
+}
+
 vec4 surfaceTile(int base, int variant, vec2 uv, vec2 dx, vec2 dy) {
     ivec2 seasons = (vSurface.z & 256) != 0 ? ivec2(2) : vGroundSeasons;
     if (vGroundMix <= 0.0)
@@ -276,6 +321,30 @@ vec3 groundFill(int sector, vec2 world) {
     return mix(sectorColor(sector), art.rgb, art.a);
 }
 
+// Both owners sample this same world-space mixture at an open street join.
+// Use fixed earth artwork here so all-season paving and seasonal roads agree.
+vec3 cityJoinEarth(vec2 world) {
+    return sampleTile(familyBase(11)+12,mix(vec2(0.25),vec2(0.75),continuousUV(world))).rgb;
+}
+vec3 cityPaving(vec2 world) {
+    vec3 paving = repeatMaterial(familyBase(19)/16,world).rgb;
+    if (detailRecord(200).a >= 0.5)
+        paving = mix(paving,cityJoinEarth(world),0.15);
+    return paving;
+}
+vec3 cityJoinColor(vec2 world) {
+    return mix(cityPaving(world),cityJoinEarth(world),0.5);
+}
+float cityJoinWeight(vec2 p, bool paving) {
+    float weight = 0.0;
+    for (int dir = 0; dir < 4; ++dir) {
+        if ((vSurface.z & (1 << dir)) == 0 || (vWallMask & (1 << dir)) != 0) continue;
+        if (!paving && across(dir) != 8) continue;
+        weight = max(weight,1.0-smoothstep(0.0,0.18,edgeDistance(p,dir)));
+    }
+    return weight;
+}
+
 vec4 bank(vec2 p) {
     float coverage = 0.0;
     vec3 color = vec3(0.0);
@@ -355,6 +424,17 @@ vec4 route(vec2 p, bool road) {
                 surface = max(surface, 1.0-smoothstep(0.48,0.52,edgeDistance(p,dir)));
         }
     }
+    // A road/trail apron supplies earth coverage only. Reusing the full
+    // road verge here exposed thin curved border-art tails outside the join.
+    if ((vWallStyle & 32768) != 0) {
+        float coverage = 0.0;
+        for (int dir = 0; dir < 4; ++dir) {
+            if ((vSurface.z & (1 << dir)) == 0) continue;
+            float along = 0.5-edgeDistance(p,dir);
+            coverage = max(coverage,smoothstep(0.04,0.20,along));
+        }
+        return vec4(dirt,surface*coverage);
+    }
     vec4 result = vec4(mix(edge, dirt, surface), max(surface, verge * 0.85));
     // Illustrated roots, stones and grass are sampled along the verge. The
     // analytical corridor only clips the artwork into the connected shape.
@@ -364,15 +444,6 @@ vec4 route(vec2 p, bool road) {
     float amount = detail.a * (1.0 - surface) * verge;
     result.rgb = mix(result.rgb, detail.rgb, amount);
     result.a = max(result.a, amount);
-    if ((vWallStyle & 32768) != 0) {
-        float coverage = 0.0;
-        for (int dir = 0; dir < 4; ++dir) {
-            if ((vSurface.z & (1 << dir)) == 0) continue;
-            float along = 0.5-edgeDistance(p,dir);
-            coverage = max(coverage,smoothstep(0.04,0.20,along));
-        }
-        result.a *= coverage;
-    }
     return result;
 }
 vec4 sampleTree(int tile)
@@ -559,8 +630,8 @@ float reliefShadowAlpha(int tile, vec2 ground, vec2 groundDx, vec2 groundDy) {
 }
 vec4 litTerrainColor()
 {
-    float light = roomIllumination(vec3(vWorldUV,vRoomLayer)).a;
-    return vec4(mix(vColor.rgb,vec3(1.0),light),vColor.a);
+    // Warm illumination must not cancel DARK or permanent-shade tints.
+    return vColor;
 }
 void shadeTerrain()
 {
@@ -584,7 +655,12 @@ void shadeTerrain()
         return;
     }
     if (vKind == 15) {
-        vFragmentColor = repeatMaterial(vTiles.x/16, vWorldUV) * litTerrainColor() * uColor;
+        vec4 paving = repeatMaterial(vTiles.x/16,vWorldUV);
+        if ((vWallStyle & 32768) != 0 && uReflectionAtlas.w > 0) {
+            paving.rgb = mix(cityPaving(vWorldUV),cityJoinColor(vWorldUV),
+                             cityJoinWeight(vTreeUV,true));
+        }
+        vFragmentColor = paving*litTerrainColor()*uColor;
         return;
     }
 
@@ -640,11 +716,27 @@ void shadeTerrain()
     if (vKind >= 4 && vKind <= 7) {
         vec4 texel;
         if (vKind == 7) {
-            // ROAD owns its entire room. Neighbouring ground sprites provide
-            // the only land fringe, without an invented green verge beneath.
-            texel = vec4(scatteredMaterial(familyBase(11),vWorldUV,false), 1.0);
-            vec4 tracks = cartTrackArt(vTreeUV);
-            texel.rgb = mix(texel.rgb,tracks.rgb,tracks.a);
+            texel = vec4(scatteredMaterial(familyBase(11),vWorldUV,false),1.0);
+            vec4 grass = roadCentreGrass(vTreeUV);
+            int mask = (vSurface.z & 15) & ~vWallMask;
+            if (detailRecord(200).a >= 0.5 && mask != 0) {
+                // Actual field artwork supplies the turf, not a single sampled
+                // colour multiplied by the old tufts' dark blade luminance.
+                vec3 turf = groundFill(1,vWorldUV);
+                float distance = roadCentreDistance(vTreeUV,mask);
+                float irregular = 0.010*sin(dot(vWorldUV,vec2(17,11)))
+                                + 0.008*sin(dot(vWorldUV,vec2(29,-13)));
+                // Grassy shoulders leave two worn earth lanes around the broad
+                // median. All use the same connected path and existing road draw.
+                float shoulder = smoothstep(0.32+irregular,0.44+irregular,distance)
+                                 *(1.0-vWinter);
+                float coverage = max(grass.a,shoulder);
+                coverage *= 1.0-cityJoinWeight(vTreeUV,false);
+                texel.rgb = mix(texel.rgb,turf,coverage);
+            }
+            if (uReflectionAtlas.w > 0)
+                texel.rgb = mix(texel.rgb,cityJoinColor(vWorldUV),
+                                cityJoinWeight(vTreeUV,false));
         } else {
             texel = vKind == 4 ? bank(vTreeUV) : route(vTreeUV, vKind == 5);
         }
@@ -692,7 +784,8 @@ void shadeTerrain()
         if (depth == 0.0) depth = 0.20;
         float inset = 1.0-vTreeUV.y;
         float gutterDepth = (vWallStyle & 16384) != 0
-            ? (detailRecord(201).a > 0.5 ? 0.065 : 0.012) : 0.0;
+            ? (detailRecord(202).a > 0.5 ? 0.0
+               : detailRecord(201).a > 0.5 ? 0.065 : 0.012) : 0.0;
         bool eave = (vWallStyle & 131072) != 0;
         if ((vWallStyle & 2048) != 0) {
             // Same source frame for all fragments of an outside cap. Each

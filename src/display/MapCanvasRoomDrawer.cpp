@@ -33,6 +33,7 @@
 #include "RoadIndex.h"
 #include "TerrainDoors.h"
 #include "TerrainEdges.h"
+#include "TerrainGardens.h"
 #include "TerrainLightingDiagnostics.h"
 #include "TerrainMaterials.h"
 #include "TerrainSprites.h"
@@ -714,6 +715,7 @@ struct NODISCARD LayerBatchData final
     std::vector<TerrainSpriteVert> waterFlow;
     std::vector<TerrainSpriteVert> terrainWalls;
     std::vector<TerrainSpriteVert> roofCaps;
+    std::vector<TerrainSpriteVert> wallGardens;
     std::vector<TerrainSpriteVert> doorSprites;
     std::vector<TerrainSpriteVert> warningSprites;
     std::vector<TerrainSpriteVert> wallShadows;
@@ -826,6 +828,11 @@ struct NODISCARD LayerBatchData final
         }
         if (!terrainWalls.empty()) {
             meshes.terrainWalls = [v = terrainWalls, texture = spriteTexture](OpenGL &gl) {
+                return gl.createTerrainSpriteBatch(v, texture);
+            };
+        }
+        if (!wallGardens.empty()) {
+            meshes.wallGardens = [v = wallGardens, texture = spriteTexture](OpenGL &gl) {
                 return gl.createTerrainSpriteBatch(v, texture);
             };
         }
@@ -991,12 +998,11 @@ private:
             if ((walls & (1u << side)) || next == m_roomHandles.end())
                 continue;
             const auto &peer = *next->second;
-            if (peer.getTerrainType() == RoomTerrainEnum::ROAD
-                || peer.getTerrainType() == RoomTerrainEnum::CITY)
-                continue;
             const auto peerMask = static_cast<uint32_t>(getRoadIndex(peer.getRaw()));
-            if (peerMask & (1u << (side ^ 1u)))
-                mask |= 1u << side;
+            mask |= terrain_edges::routePeerConnection(edgeSector(peer.getTerrainType()),
+                                                       peerMask,
+                                                       side,
+                                                       walls);
         }
         return mask;
     }
@@ -1076,6 +1082,48 @@ private:
         door.textureColor = {tex.position * 16 + static_cast<int>(variant), 0, 0, flags};
         m_data.spriteTexture = tex.array;
         m_data.doorSprites.emplace_back(door);
+    }
+
+    void addWallGardens(const RoomHandle &room,
+                        const ExitDirEnum direction,
+                        const float depth,
+                        const NamedColorEnum tint)
+    {
+        const auto &selection = spritePack(room);
+        if (room.getTerrainType() != RoomTerrainEnum::CITY || selection.cityWallGardens < 0)
+            return;
+        const auto pos = room.getPosition();
+        const auto side = static_cast<unsigned>(direction);
+        std::array<float, 4> clearances{};
+        const auto walls = wallMask(pos);
+        for (const auto dir : ALL_EXITS_NESW) {
+            const auto index = static_cast<unsigned>(dir);
+            if (room.getExit(dir).getExitFlags().isDoor()) {
+                clearances[index] = 0.24f; // Keep the neighbouring door approach open.
+            } else if ((walls & (1u << index)) != 0) {
+                const auto face = wallFamily(room.getTerrainType(), pos, dir);
+                if (face)
+                    clearances[index] = terrain_walls::depth(*face);
+            }
+        }
+        const auto image = m_textures.terrain_sprites.at(
+            static_cast<std::size_t>(selection.cityWallGardens));
+        for (const auto &sprite :
+             terrain_gardens::sprites(room.getIdExternal().asUint32(), side, depth, clearances)) {
+            TerrainSpriteVert garden;
+            garden.anchorSizeLayer = {static_cast<float>(pos.x) + sprite.x,
+                                      static_cast<float>(pos.y) + sprite.y,
+                                      sprite.size,
+                                      static_cast<float>(pos.z)};
+            garden.textureColor = {image.position * 16 + static_cast<int>(sprite.variant),
+                                   static_cast<int>(tint),
+                                   static_cast<int>(sprite.transition),
+                                   terrain_materials::WARNING_KIND | terrain_materials::ALL_SEASON
+                                       | terrain_materials::NO_SKY_SHADOW
+                                       | terrain_materials::GARDEN_SPRITE
+                                       | static_cast<int>(terrain_walls::rotation(side) << 4u)};
+            m_data.wallGardens.emplace_back(garden);
+        }
     }
 
     NODISCARD bool hasOrganicRoute(const RoomHandle &room) const
@@ -1361,6 +1409,20 @@ private:
                         atlas(family(sector)),
                         terrain_materials::PAVING_KIND | allSeason,
                         NamedColorEnum::DEFAULT);
+                    if (sector == S::URBAN) {
+                        auto &paving = m_data.organicGroundBase.back();
+                        paving.textureColor.x |= spritePackIndex(room) << 20u;
+                        uint32_t joins = 0;
+                        for (const auto dir : ALL_EXITS_NESW) {
+                            const auto side = static_cast<unsigned>(dir);
+                            const auto peer = m_sectors.find(pos + exitDir(dir));
+                            if (!(walls & (1u << side)) && peer != m_sectors.end()
+                                && peer->second == S::ROAD)
+                                joins |= 1u << side;
+                        }
+                        paving.textureColor.w |= terrain_materials::CITY_PAVING
+                                                 | static_cast<int>(joins << 4u);
+                    }
                 } else if (sector == S::WATER) {
                     add(m_data.organicGroundBase,
                         {0.5f, 0.5f, 1.f, 0, 32768},
@@ -1781,6 +1843,7 @@ private:
                             // The vertex shader keeps the tile in the low 20 bits.
                             wall.textureColor.x |= spritePackIndex(room) << 20;
                             m_data.terrainWalls.emplace_back(wall);
+                            addWallGardens(room, dir, terrain_walls::depth(*family), tint);
                             if (roof
                                 && (faceMask
                                     & (1u << terrain_walls::alongDirections(
@@ -1999,6 +2062,7 @@ LayerMeshes LayerMeshesIntermediate::getLayerMeshes(OpenGL &gl) const
     lm.waterFlow = r.resolve(waterFlow);
     lm.terrainWalls = r.resolve(terrainWalls);
     lm.roofCaps = r.resolve(roofCaps);
+    lm.wallGardens = r.resolve(wallGardens);
     lm.doorSprites = r.resolve(doorSprites);
     lm.warningSprites = r.resolve(warningSprites);
     lm.wallShadows = r.resolve(wallShadows);
@@ -2155,6 +2219,13 @@ void LayerMeshes::render(const int thisLayer,
                                 .withColor(Colors::white)
                                 .withTerrainDay(day));
     }
+
+    // Garden images are full square sprites, in front of walls/corner caps
+    // and beneath the door pass. They never inherit wall-strip clipping.
+    if (!disableTextures && organicSelected && wallGardens)
+        wallGardens.render(defaultState.withBlend(BlendModeEnum::TRANSPARENCY)
+                               .withColor(Colors::white)
+                               .withTerrainDay(day));
 
     // Door art is a final room-owned overlay, above legacy wall/door lines
     // and decorative roofs. Up/down doors keep their existing representation.

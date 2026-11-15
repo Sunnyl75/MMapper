@@ -293,7 +293,11 @@ GLRenderState TerrainRoomLighting::prepare(OpenGL &gl,
                                         bounds.min.y,
                                         bounds.max.x - bounds.min.x + 1,
                                         bounds.max.y - bounds.min.y + 1};
-    uniforms.roomLightParams = glm::vec4{1.f, 0.f, 0.f, static_cast<float>(layer)};
+    // Keep daytime warm lighting visible without changing its reach or room darkness.
+    uniforms.roomLightParams = glm::vec4{1.f,
+                                         streetLightsOn ? 1.f : 1.2f,
+                                         0.f,
+                                         static_cast<float>(layer)};
     uniforms.roomLightInverse = glm::inverse(viewProjection);
     m_diagnostics.active();
     m_animating = settings.roomLightFlicker.get() > 0;

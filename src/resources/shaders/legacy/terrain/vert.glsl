@@ -53,7 +53,8 @@ void main()
         // One canonical ribbon spans both rooms. The existing stream visitor
         // chooses the half; each quad ends exactly at its own room boundary.
         if (flow) offset *= vec2(0.60, 0.50);
-        int rotation = (kind == 2 || kind == 12 || flow) ? (aTextureColor.w >> 4) & 3 : 0;
+        bool garden = kind == 10 && (aTextureColor.w & 1048576) != 0;
+        int rotation = (kind == 2 || kind == 12 || flow || garden) ? (aTextureColor.w >> 4) & 3 : 0;
         for (int i = 0; i < rotation; ++i) offset = vec2(-offset.y, offset.x);
         p = aAnchorSizeLayer.xy + offset * (kind == 13 ? 1.0 : aAnchorSizeLayer.z);
     }
@@ -123,7 +124,7 @@ void main()
     vWaterClip = ivec3(ivec2(floor(aAnchorSizeLayer.xy)), (aTextureColor.z >> 16) & 255);
     vWinter = allSeason ? 0.0 : mix(previous == 0 ? 1.0 : 0.0, following == 0 ? 1.0 : 0.0, baseFade);
     // Walls carry their pack selection above the ordinary tile index.
-    int tile = kind == 12 ? (aTextureColor.x & 1048575) : aTextureColor.x;
+    int tile = (kind == 12 || kind == 15) ? (aTextureColor.x & 1048575) : aTextureColor.x;
     bool door = kind == 12 && (aTextureColor.w & 256) != 0;
     vTiles = ivec2(tile + previous * 6, tile + following * 6);
     if (door && uTerrainDoorRoom.w != 0) {
