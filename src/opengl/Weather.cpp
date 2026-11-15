@@ -195,11 +195,15 @@ GLWeather::GLWeather(OpenGL &gl,
     m_observer.sig2_tick.connect(m_lifetime, [this](const MumeMoment &moment) {
         m_clockMoment = moment;
         m_clockAnchorTime = std::chrono::steady_clock::now();
-        // The clock widget uses this same classification for its warning
-        // colours. Animate only its native one-hour DAWN/DUSK windows.
-        const auto timeOfDay = moment.toTimeOfDay();
-        if (!m_previewMoment && !m_data.isEmpty()
-            && (m_skyChanging || timeOfDay == MumeTimeEnum::DAWN || timeOfDay == MumeTimeEnum::DUSK))
+        const auto schedule = MumeClock::getDawnDusk(moment.month);
+        const auto sky = terrain_twilight::sampleClock(moment.hour + moment.minute / 60.0,
+                                                       schedule.dawnHour,
+                                                       schedule.duskHour,
+                                                       {});
+        // The evening palette runs during the first native NIGHT hour, not
+        // DUSK. Wake even when a clock sync enters that hour without changing
+        // the observer's time-of-day enum; retain one final frame at its end.
+        if (!m_previewMoment && !m_data.isEmpty() && (m_skyChanging || sky.changing))
             m_animationManager.requestUpdate();
     });
 
@@ -379,11 +383,10 @@ void GLWeather::updateSkyTint()
             night = glm::vec4{mixed[0], mixed[1], mixed[2], mixed[3]};
         }
     }
-    // Evening colours start at clock NIGHT and reach darkness one hour later.
-    const auto sky = terrain_twilight::sample(hour,
-                                              dawnDusk.dawnHour,
-                                              dawnDusk.duskHour + 1.0,
-                                              {night.r, night.g, night.b, night.a});
+    const auto sky = terrain_twilight::sampleClock(hour,
+                                                   dawnDusk.dawnHour,
+                                                   dawnDusk.duskHour,
+                                                   {night.r, night.g, night.b, night.a});
     const float intensity = static_cast<float>(getConfig().canvas.weatherTimeOfDayIntensity.get())
                             / 50.f;
     m_skyTint = glm::vec4{sky.tint[0], sky.tint[1], sky.tint[2], sky.tint[3] * intensity};

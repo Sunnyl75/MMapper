@@ -6,6 +6,7 @@
 #include "../src/clock/ClockStrings.h"
 #include "../src/clock/mumeclock.h"
 #include "../src/configuration/configuration.h"
+#include "../src/display/TerrainTwilight.h"
 #include "../src/global/HideQDebug.h"
 #include "../src/global/enums.h"
 #include "../src/observer/gameobserver.h"
@@ -283,6 +284,44 @@ void TestClock::parseWeatherTest()
              static_cast<int>(MumeMoonVisibilityEnum::BRIGHT));
 
     QCOMPARE(static_cast<int>(observer.getSeason()), static_cast<int>(MumeSeasonEnum::SUMMER));
+}
+
+void TestClock::twilightClockSyncTest()
+{
+    const terrain_twilight::Tint night{0.05f, 0.05f, 0.2f, 0.35f};
+    for (int month = 0; month < MUME_MONTHS_PER_YEAR; ++month) {
+        GameObserver observer;
+        MumeClock clock(observer);
+        Signal2Lifetime lifetime;
+        int changes = 0;
+        observer.sig2_timeOfDayChanged.connect(lifetime, [&](MumeTimeEnum) { ++changes; });
+        const auto now = clock.getMumeStartEpoch() + MumeMoment{2900, month, 14, 12, 0}.toSeconds();
+        const auto schedule = MumeClock::getDawnDusk(month);
+        const auto colour = [&](const int64_t when) {
+            const auto moment = clock.getMumeMoment(when);
+            return terrain_twilight::sampleClock(moment.hour + moment.minute / 60.0,
+                                                 schedule.dawnHour,
+                                                 schedule.duskHour,
+                                                 night);
+        };
+
+        // The existing sun-dark sync anchors the clock at the beginning of
+        // our delayed visual evening. It must still animate at native NIGHT.
+        clock.parseWeather(MumeTimeEnum::NIGHT, now);
+        QCOMPARE(changes, 1);
+        QCOMPARE(clock.getMumeMoment(now).hour, schedule.duskHour + 1);
+        QVERIFY(colour(now).changing);
+        QVERIFY(std::abs(colour(now).tint[3]) < 1.e-6f);
+        QVERIFY(colour(now + 30).tint[3] > 0.f);
+        QVERIFY(!colour(now + 60).changing);
+        QVERIFY(std::abs(colour(now + 60).tint[3] - night[3]) < 1.e-6f);
+
+        // Re-synchronising inside NIGHT does not emit a time-of-day change.
+        // The weather tick must wake from its actual visual window instead.
+        clock.parseWeather(MumeTimeEnum::NIGHT, now + 15);
+        QCOMPARE(changes, 1);
+        QVERIFY(colour(now + 15).changing);
+    }
 }
 
 void TestClock::parseClockTimeTest()

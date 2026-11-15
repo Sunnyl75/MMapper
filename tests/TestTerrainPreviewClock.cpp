@@ -131,10 +131,10 @@ int main(int argc, char **argv)
             return *seen.back();
         };
         const auto colour = [&](const MumeMoment &moment) {
-            return terrain_twilight::sample(moment.hour + moment.minute / 60.0,
-                                            schedule.dawnHour,
-                                            schedule.duskHour,
-                                            night);
+            return terrain_twilight::sampleClock(moment.hour + moment.minute / 60.0,
+                                                 schedule.dawnHour,
+                                                 schedule.duskHour,
+                                                 night);
         };
         const auto beforeDawn = at(schedule.dawnHour - 1);
         assert(beforeDawn.toTimeOfDay() == MumeTimeEnum::NIGHT);
@@ -151,15 +151,20 @@ int main(int argc, char **argv)
         assert(beforeDusk.toTimeOfDay() == MumeTimeEnum::DAY);
         assert(!colour(beforeDusk).changing);
         assert(std::abs(colour(beforeDusk).tint[3]) < 1.e-6f);
-        const auto dusk = at(schedule.duskHour);
-        assert(dusk.toTimeOfDay() == MumeTimeEnum::DUSK);
-        assert(colour(dusk).changing && colour(dusk).tint[3] < night[3]);
-        const auto dark = at(schedule.duskHour + 1);
+        const auto duskWarning = at(schedule.duskHour);
+        assert(duskWarning.toTimeOfDay() == MumeTimeEnum::DUSK);
+        assert(!colour(duskWarning).changing);
+        assert(std::abs(colour(duskWarning).tint[3]) < 1.e-6f);
+        const auto evening = at(schedule.duskHour + 1);
+        assert(evening.toTimeOfDay() == MumeTimeEnum::NIGHT);
+        assert(colour(evening).changing && colour(evening).tint[3] < night[3]);
+        const auto dark = at((schedule.duskHour + 2) % MUME_HOURS_PER_DAY);
         assert(dark.toTimeOfDay() == MumeTimeEnum::NIGHT);
         assert(!colour(dark).changing);
         assert(std::abs(colour(dark).tint[3] - night[3]) < 1.e-6f);
-        // The exact classifier driving the native clock's red/blue warning
-        // must match the colour animation for every minute of all 12 months.
+        // Check the production rendering schedule for all twelve months.
+        // Dawn keeps the native DAWN hour; visual dusk uses the first NIGHT
+        // hour. Do not accidentally test the older, unshifted dusk palette.
         unsigned dawnMinutes = 0, duskMinutes = 0;
         for (int minuteOfDay = 0; minuteOfDay < MUME_MINUTES_PER_DAY; ++minuteOfDay) {
             const MumeMoment moment{2900,
@@ -168,10 +173,11 @@ int main(int argc, char **argv)
                                     minuteOfDay / MUME_MINUTES_PER_HOUR,
                                     minuteOfDay % MUME_MINUTES_PER_HOUR};
             const auto timeOfDay = moment.toTimeOfDay();
-            const bool warning = timeOfDay == MumeTimeEnum::DAWN || timeOfDay == MumeTimeEnum::DUSK;
+            const bool visualDusk = moment.hour == schedule.duskHour + 1;
+            const bool warning = timeOfDay == MumeTimeEnum::DAWN || visualDusk;
             assert(colour(moment).changing == warning);
             dawnMinutes += timeOfDay == MumeTimeEnum::DAWN ? 1u : 0u;
-            duskMinutes += timeOfDay == MumeTimeEnum::DUSK ? 1u : 0u;
+            duskMinutes += visualDusk ? 1u : 0u;
         }
         assert(dawnMinutes == MUME_MINUTES_PER_HOUR && duskMinutes == MUME_MINUTES_PER_HOUR);
     }

@@ -45,10 +45,9 @@ inline Sample sample(double hour, const double dawn, const double dusk, const Ti
         || dusk > 23.0 || dawn + 1.0 > dusk)
         return {};
     hour = std::fmod(std::fmod(hour, 24.0) + 24.0, 24.0);
-    // These are the STARTS of master's one-hour DAWN/DUSK warnings, when
-    // MumeClockWidget changes colour via MumeMoment::toTimeOfDay(). Fit the
-    // entire palette into that SAME hour: red/DAWN -> DAY, blue/DUSK -> NIGHT.
-    // No extra preceding hour or trailing fade; dusk can end at midnight.
+    // Inputs are the starts of the visual dawn/dusk transitions. Each lasts
+    // exactly one MUME hour; dusk can end at midnight. Production callers use
+    // sampleClock() below to apply the agreed offset from the native clock.
     const bool sunrise = hour >= dawn && hour < dawn + 1.0;
     const bool sunset = hour >= dusk && hour < dusk + 1.0;
     if (!sunrise && !sunset)
@@ -82,5 +81,16 @@ inline Sample sample(double hour, const double dawn, const double dusk, const Ti
                           0.5f + 0.4f * (tint[2] - 0.5f),
                           strength};
     return {tint, true, highlights};
+}
+
+inline Sample sampleClock(const double hour,
+                          const double dawnWarning,
+                          const double duskWarning,
+                          const Tint &night)
+{
+    // Keep dawn unchanged. Visual dusk starts when the native clock enters
+    // NIGHT, and reaches full darkness one game hour later. Rendering and its
+    // animation wake-up must use this same conversion.
+    return sample(hour, dawnWarning, duskWarning + 1.0, night);
 }
 } // namespace terrain_twilight

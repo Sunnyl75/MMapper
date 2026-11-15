@@ -108,5 +108,31 @@ int main()
     for (int i = 0; i < 1440; ++i)
         assert(std::abs(sample(i / 60.0, 6.0, 18.0, {0.f, 0.f, 0.f, 0.f}).highlights[3]) < 1.e-6f);
     assert(!sample(5.0, 10.0, 6.0, night).changing);
+
+    // Exercise the production clock conversion, not just the raw palette.
+    // Native DUSK remains daylight; native NIGHT starts the one-hour fade.
+    const auto clockColour = [&](const double hour) { return sampleClock(hour, 8.0, 18.0, night); };
+    assert(!clockColour(18.5).changing && clockColour(18.5).tint[3] < 1.e-6f);
+    assert(clockColour(19.0).changing && clockColour(19.0).tint[3] < 1.e-6f);
+    assert(clockColour(19.5).changing && clockColour(19.5).tint[3] > 0.f);
+    assert(!clockColour(20.0).changing);
+    assert(std::abs(clockColour(20.0).tint[3] - night[3]) < 1.e-6f);
+    assert(clockColour(8.0).changing);
+    assert(std::abs(clockColour(8.0).tint[3] - night[3]) < 1.e-6f);
+    assert(!clockColour(9.0).changing && clockColour(9.0).tint[3] < 1.e-6f);
+    // A zero-opacity sample still identifies animation windows. The live
+    // tick uses this path to wake an idle renderer independently of colours.
+    for (int minute = 0; minute < 1440; ++minute) {
+        const double hour = minute / 60.0;
+        const bool changing = (minute >= 8 * 60 && minute < 9 * 60)
+                              || (minute >= 19 * 60 && minute < 20 * 60);
+        assert(clockColour(hour).changing == changing);
+        assert(sampleClock(hour, 8.0, 18.0, {}).changing == changing);
+    }
+    // The latest production sunset is 22:00: its delayed visual dusk must
+    // complete at midnight rather than fading on into the following day.
+    assert(sampleClock(23.5, 4.0, 22.0, night).changing);
+    assert(!sampleClock(0.0, 4.0, 22.0, night).changing);
+    assert(std::abs(sampleClock(0.0, 4.0, 22.0, night).tint[3] - night[3]) < 1.e-6f);
     std::cout << "One-hour twilight colours, endpoints, highlight grade and continuous wrap passed\n";
 }

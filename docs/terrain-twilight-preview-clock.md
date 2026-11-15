@@ -11,11 +11,13 @@ DAWN (red) or DUSK (blue). Each is exactly one game hour long. The names in the
 monthly table refer to the START of those warning phases: DAY begins at
 `dawnHour + 1`; NIGHT begins at `duskHour + 1`.
 
-The full palette runs inside that same clock warning, with no extra preceding
-hour. Morning moves from configured night blue through violet, rose, peach and
+Morning moves from configured night blue through violet, rose, peach and
 pale gold, reaching clear daylight exactly at DAY. Evening moves from daylight
-through gold, amber, rose and violet, reaching full configured night exactly at
-NIGHT. Highlight grading peaks midway through each warning and reaches zero at
+through gold, amber, rose and violet during the first native NIGHT hour,
+reaching full configured night one hour after NIGHT begins. The November timing
+confirmation supersedes the earlier unshifted DUSK-hour palette. Both live and
+preview rendering use `terrain_twilight::sampleClock()` for that conversion.
+Highlight grading peaks midway through each visual transition and reaches zero at
 both ends. The earlier two-hour palette is superseded.
 
 Each palette segment uses smoothstep interpolation in linear-light,
@@ -25,8 +27,9 @@ interpolates between MUME-minute ticks using monotonic elapsed time, capped at
 the next tick. One real second is one game minute. Paused preview time stays
 at its selected minute.
 
-`MumeClock::getDawnDusk` supplies the monthly schedule; `MumeMoment::toTimeOfDay`
-supplies the same live warning trigger consumed by the native clock widget.
+`MumeClock::getDawnDusk` supplies the monthly schedule. The native clock widget
+still uses `MumeMoment::toTimeOfDay`; the rendering wake-up uses the same
+`sampleClock()` visual schedule as the palette, including the delayed evening.
 Night and moonlit-night colours, night alpha and the Time of Day intensity
 preference retain their roles. Unknown live time retains the earlier named
 colour fallback. Preview uses the same schedule and palette, without changing
@@ -50,8 +53,10 @@ Typing/programmatic setValue edits a field directly and does not infer a carry j
 monotonic opacity, finite colours, the highlight envelope, visible continuity
 and midnight wrapping. `TestTerrainPreviewClock` exercises the Qt controls,
 calendar carries/borrows and the actual production clock schedule. For every
-minute of all twelve months, twilight is changing if and only if the native
-clock classifier is DAWN or DUSK: exactly 60 game minutes for each.
+minute of all twelve months, twilight changes during the native DAWN hour and
+the first native NIGHT hour: exactly 60 game minutes for each. Native DUSK
+remains daylight in the visual palette. A maximum-summer evening completes at
+midnight, with no additional fade into the next day.
 
 See the delivery verification notes for checks actually run and platform limits.
 
@@ -64,5 +69,6 @@ explains that the main MMapper clock continues to show live game time.
 
 The Qt regression compares all twelve months with the actual
 `MumeClock::getDawnDusk` table and `MumeMoment::toTimeOfDay` implementation.
-The entire spectrum fits inside the native warning hour and reaches daylight
-or full night at its end.
+Each complete spectrum fits into one visual transition hour and reaches
+daylight or full night at its end. For Month 1, dawn runs from 08:00 to 09:00,
+and visual dusk from 19:00 to 20:00.
